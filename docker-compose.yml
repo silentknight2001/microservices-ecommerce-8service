@@ -2,16 +2,19 @@ version: "3.8"
 
 services:
 
+  # 🔹 MongoDB
   mongodb:
     image: mongo:6
     ports:
       - "27017:27017"
 
+  # 🔹 Zookeeper
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
 
+  # 🔹 Kafka
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     depends_on:
@@ -23,56 +26,70 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
+  # 🔹 Service Registry
   service-registry:
     build:
-      context: .
-      dockerfile: service-registry/Dockerfile
+      context: ./service-registry
     ports:
       - "8761:8761"
 
+  # 🔹 Inventory Service
   inventory-service:
     build:
-      context: .
-      dockerfile: inventory-service/Dockerfile
+      context: ./inventory-service
     depends_on:
       - mongodb
       - kafka
       - service-registry
+    environment:
+      - SPRING_DATA_MONGODB_URI=mongodb://mongodb:27017/inventory-db
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-registry:8761/eureka
 
+  # 🔹 Order Service
   order-service:
     build:
-      context: .
-      dockerfile: order-service/Dockerfile
+      context: ./order-service
     depends_on:
       - kafka
       - service-registry
+    environment:
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-registry:8761/eureka
 
+  # 🔹 Payment Service
   payment-service:
     build:
-      context: .
-      dockerfile: payment-service/Dockerfile
+      context: ./payment-service
     depends_on:
       - service-registry
+    environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-registry:8761/eureka
 
+  # 🔹 Shipping Service
   shipping-service:
     build:
-      context: .
-      dockerfile: shipping-service/Dockerfile
+      context: ./shipping-service
     depends_on:
       - service-registry
+    environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-registry:8761/eureka
 
+  # 🔹 Notification Service
   notification-service:
     build:
-      context: .
-      dockerfile: notification-service/Dockerfile
+      context: ./notification-service
     depends_on:
       - kafka
       - service-registry
+    environment:
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-registry:8761/eureka
 
+  # 🔹 API Gateway
   api-gateway:
     build:
-      context: .
-      dockerfile: api-gateway/Dockerfile
+      context: ./api-gateway
     ports:
       - "8080:8080"
     depends_on:
@@ -82,3 +99,5 @@ services:
       - payment-service
       - shipping-service
       - notification-service
+    environment:
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-registry:8761/eureka
