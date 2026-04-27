@@ -29,14 +29,17 @@ services:
   # 🔹 Service Registry
   service-registry:
     build:
-      context: ./service-registry
+      context: .
+      dockerfile: ./service-registry/Dockerfile
+
     ports:
       - "8761:8761"
 
   # 🔹 Inventory Service
   inventory-service:
     build:
-      context: ./inventory-service
+      context: .
+      dockerfile: ./inventory-service/Dockerfile
     depends_on:
       - mongodb
       - kafka
@@ -49,7 +52,8 @@ services:
   # 🔹 Order Service
   order-service:
     build:
-      context: ./order-service
+      context: .
+      dockerfile: ./order-service/Dockerfile
     depends_on:
       - kafka
       - service-registry
@@ -60,7 +64,8 @@ services:
   # 🔹 Payment Service
   payment-service:
     build:
-      context: ./payment-service
+      context: .
+      dockerfile: ./payment-service/Dockerfile
     depends_on:
       - service-registry
     environment:
@@ -69,7 +74,8 @@ services:
   # 🔹 Shipping Service
   shipping-service:
     build:
-      context: ./shipping-service
+      context: .
+      dockerfile: ./shipping-service/Dockerfile
     depends_on:
       - service-registry
     environment:
@@ -78,7 +84,8 @@ services:
   # 🔹 Notification Service
   notification-service:
     build:
-      context: ./notification-service
+      context: .
+      dockerfile: ./notification-service/Dockerfile
     depends_on:
       - kafka
       - service-registry
@@ -89,7 +96,8 @@ services:
   # 🔹 API Gateway
   api-gateway:
     build:
-      context: ./api-gateway
+      context: .
+      dockerfile: ./api-gateway/Dockerfile
     ports:
       - "8080:8080"
     depends_on:
