@@ -3,35 +3,40 @@ FROM eclipse-temurin:21-jdk-jammy AS build
 
 WORKDIR /app
 
-# Install necessary tools......:)
 RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
-# Copy Maven wrapper & config first (for caching)
-COPY .mvn/ .mvn
-COPY mvnw pom.xml ./
+# ✅ Copy ROOT pom.xml only (root has no .mvn folder — removed that line)
+COPY pom.xml ./pom.xml
 
-# Give execute permission........:)
+# ✅ Use the service's own Maven wrapper (.mvn lives inside service-registry/)
+COPY api-gateway/.mvn/ .mvn/
+COPY api-gateway/mvnw ./
 RUN chmod +x mvnw
 
-# Download dependencies (cache layer)......:)
-RUN ./mvnw dependency:go-offline -B
+# ✅ Install parent POM into local repo so child module can resolve it
+RUN ./mvnw install -N -B --no-transfer-progress
 
-# Copy source code............:)
-COPY src ./src
+# ✅ Copy service pom.xml separately for Docker layer caching
+COPY api-gateway/pom.xml ./
 
-# Build application............:)
-RUN ./mvnw clean package -DskipTests
+# Download dependencies
+RUN ./mvnw dependency:go-offline -B --no-transfer-progress
 
+# Copy source code
+COPY api-gateway/src ./src
 
-# Stage 2: Runtime......::)
+# Build
+RUN ./mvnw clean package \
+    -DskipTests \
+    -B \
+    --no-transfer-progress
+
+# Stage 2: Runtime
 FROM eclipse-temurin:21-jre-jammy
 
 WORKDIR /app
 
-# Security update.........:)
 RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
-
-# Create non-root user......:)
 RUN useradd -m springuser
 USER springuser
 
