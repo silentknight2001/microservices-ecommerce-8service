@@ -1,47 +1,45 @@
-# Stage 1: Build
-FROM eclipse-temurin:21-jdk-jammy AS build
+FROM maven:3.9.6-eclipse-temurin-21 AS build
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+COPY . .
 
-# ✅ Copy ROOT pom.xml only (root has no .mvn folder — removed that line)
-COPY pom.xml ./pom.xml
+# Install parent POM first
+RUN mvn install -N -B --no-transfer-progress
 
-# ✅ Use the service's own Maven wrapper (.mvn lives inside service-registry/)
-COPY notification-service/.mvn/ .mvn/
-COPY notification-service/mvnw ./
-RUN chmod +x mvnw
+# Install common-library into .m2 BEFORE building inventory-service
+RUN mvn -pl common-library clean install -DskipTests -B --no-transfer-progress
 
-# ✅ Install parent POM into local repo so child module can resolve it
-RUN ./mvnw install -N -B --no-transfer-progress
+# Now build inventory-service safely
+RUN mvn -pl notification-service clean package -DskipTests -B --no-transfer-progress
 
-# ✅ Copy service pom.xml separately for Docker layer caching
-COPY notification-service/pom.xml ./
-
-# Download dependencies
-RUN ./mvnw dependency:go-offline -B --no-transfer-progress
-
-# Copy source code
-COPY notification-service/src ./src
-
-# Build
-RUN ./mvnw clean package \
-    -DskipTests \
-    -B \
-    --no-transfer-progress
 
 # Stage 2: Runtime
 FROM eclipse-temurin:21-jre-jammy
 
 WORKDIR /app
 
-RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
-RUN useradd -m springuser
-USER springuser
+RUN apt-get update && \
+    apt-get upgrade -y --no-install-recommends && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /app/target/*.jar app.jar
+RUN groupadd --system --gid 1001 springgroup && \
+    useradd --system --uid 1001 --gid springgroup \
+            --no-create-home --shell /usr/sbin/nologin springuser
+
+COPY --from=build --chown=springuser:springgroup \
+     /app/notification-service/target/*.jar app.jar
+
+RUN chmod 440 app.jar
+
+USER springuser
 
 EXPOSE 8080
 
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75.0", "-XX:+UseContainerSupport", "-jar", "app.jar"]
+ENTRYPOINT ["java", \
+    "-XX:MaxRAMPercentage=75.0", \
+    "-XX:+UseContainerSupport", \
+    "-Djava.security.egd=file:/dev/./urandom", \
+    "-Dlog4j2.formatMsgNoLookups=true", \
+    "-jar", "app.jar"]
