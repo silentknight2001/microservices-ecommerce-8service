@@ -1,6 +1,3 @@
-# =========================
-# Stage 1: Build
-# =========================
 FROM maven:3.9.6-eclipse-temurin-21 AS build
 
 WORKDIR /app
@@ -16,9 +13,7 @@ RUN mvn -pl common-library clean install -DskipTests -B --no-transfer-progress
 # ✅ Now build inventory-service safely
 RUN mvn -pl inventory-service clean package -DskipTests -B --no-transfer-progress
 
-# =========================
 # Stage 2: Runtime
-# =========================
 FROM eclipse-temurin:21-jre-jammy
 
 WORKDIR /app
