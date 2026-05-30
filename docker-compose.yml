@@ -128,6 +128,10 @@ services:
       service-registry:
         condition: service_healthy
     environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/ecommerce  
+      - SPRING_DATASOURCE_USERNAME=postgres                              
+      - SPRING_DATASOURCE_PASSWORD=postgres 
+      - SPRING_JPA_HIBERNATE_DDL_AUTO=update 
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://service-registry:8761/eureka
 
   notification-service:
@@ -148,7 +152,7 @@ services:
       context: .
       dockerfile: ./api-gateway/Dockerfile
     ports:
-      - "8080:8080"
+      - "8088:8080"
     depends_on:
       service-registry:
         condition: service_healthy
