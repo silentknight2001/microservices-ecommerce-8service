@@ -81,7 +81,7 @@ jobs:
       # Print image digest for traceability
       - name: Print image digest
         run: echo "Image pushed → ${{ env.DOCKER_IMAGE }}:sha-${{ github.sha }}"
-        
+
   # deploy:
   # name: Update K8s Manifest (GitOps)
   # runs-on: ubuntu-latest
@@ -111,11 +111,8 @@ jobs:
 
 
         
-  # ─────────────────────────────────────────────
   # JOB 2 — Deploy to EKS
-  # Skipped until EKS cluster is ready (Phase 2)
-  # Uncomment this entire job after Terraform setup
-  # ─────────────────────────────────────────────
+  #------------------------------
   # deploy:
   #   name: Deploy to EKS
   #   runs-on: ubuntu-latest
