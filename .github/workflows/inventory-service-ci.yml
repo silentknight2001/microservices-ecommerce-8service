@@ -38,7 +38,7 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      # Build common-library first — every service needs this
+      # Build common-library firstevery service needs this
       - name: Build & install common-library
         run: mvn install -pl common-library -am -DskipTests
 
