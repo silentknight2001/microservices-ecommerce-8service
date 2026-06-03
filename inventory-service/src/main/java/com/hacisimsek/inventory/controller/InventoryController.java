@@ -58,7 +58,7 @@ public class InventoryController {
 
     @GetMapping("/check")
     public ResponseEntity<Boolean> checkInventoryAvailability(
-            @RequestParam UUID productId,
+            @RequestParam String productId,
             @RequestParam Integer quantity) {
         boolean isAvailable = inventoryItemService.checkAvailability(productId, quantity);
         return ResponseEntity.ok(isAvailable);
