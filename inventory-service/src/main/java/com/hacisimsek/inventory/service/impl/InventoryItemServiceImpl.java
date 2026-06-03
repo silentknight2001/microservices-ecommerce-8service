@@ -27,7 +27,7 @@ public class InventoryItemServiceImpl implements InventoryItemService {
     @Transactional
     public InventoryItem createInventoryItem(InventoryItemRequest request) {
         InventoryItem item = InventoryItem.builder()
-                .id(UUID.randomUUID()..toString())
+                .id(UUID.randomUUID().toString())
                 .name(request.getName())
                 .description(request.getDescription())
                 .availableQuantity(request.getQuantity())
