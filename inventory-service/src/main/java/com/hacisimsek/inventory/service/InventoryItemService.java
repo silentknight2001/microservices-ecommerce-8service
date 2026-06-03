@@ -4,7 +4,7 @@ import com.hacisimsek.inventory.dto.InventoryItemRequest;
 import com.hacisimsek.inventory.model.InventoryItem;
 
 import java.util.List;
-import java.util.UUID;
+// import java.util.UUID;
 
 public interface InventoryItemService {
     InventoryItem createInventoryItem(InventoryItemRequest request);
