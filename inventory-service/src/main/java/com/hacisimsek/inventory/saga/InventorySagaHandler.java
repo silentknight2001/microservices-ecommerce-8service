@@ -28,7 +28,7 @@ public class InventorySagaHandler {
         if (event instanceof PaymentFailedEvent paymentFailedEvent) {
             log.info("Received PaymentFailedEvent for order: {}, cancelling inventory reservation",
                     paymentFailedEvent.getOrderId());
-            inventoryService.cancelReservation(paymentFailedEvent.getOrderId());
+            inventoryService.cancelReservation(paymentFailedEvent.getOrderId().toString());
         }
     }
 }
