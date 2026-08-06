@@ -15,7 +15,7 @@ public class InventorySagaHandler {
 
     private final InventoryService inventoryService;
 
-    // ✅ Fix both methods
+    
     @KafkaListener(topics = "order-events", groupId = "inventory-service-group")
     public void handleOrderEvents(OrderCreatedEvent orderCreatedEvent) {
         log.info("Received OrderCreatedEvent for order: {}", orderCreatedEvent.getOrderId());
