@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class InventorySagaHandler {
 
-    private final InventoryService inventoryService;   microservices-ecommerce-8service
+    private final InventoryService inventoryService;
 
     // test one pipeline 
     @KafkaListener(topics = "order-events", groupId = "inventory-service-group")
