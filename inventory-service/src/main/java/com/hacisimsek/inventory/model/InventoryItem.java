@@ -22,6 +22,7 @@ import java.util.UUID;
 public class InventoryItem {
     @Id
     private String  id;
+    private String productId;
     private String name;
     private String description;
     private Integer availableQuantity;

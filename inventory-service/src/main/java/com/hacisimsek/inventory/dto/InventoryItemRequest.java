@@ -13,7 +13,7 @@ import lombok.NoArgsConstructor;
 public class InventoryItemRequest {
     @NotBlank
     private String name;
-
+    private String productId;
     private String description;
 
     @NotNull

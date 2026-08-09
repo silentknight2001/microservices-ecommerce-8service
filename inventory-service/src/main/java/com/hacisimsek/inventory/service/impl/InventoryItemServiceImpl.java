@@ -28,6 +28,7 @@ public class InventoryItemServiceImpl implements InventoryItemService {
     public InventoryItem createInventoryItem(InventoryItemRequest request) {
         InventoryItem item = InventoryItem.builder()
                 .id(UUID.randomUUID().toString())
+                .productId(request.getProductId()) 
                 .name(request.getName())
                 .description(request.getDescription())
                 .availableQuantity(request.getQuantity())
