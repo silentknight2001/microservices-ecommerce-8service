@@ -15,10 +15,9 @@ public class PaymentSagaHandler {
     private final PaymentService paymentService;
 
     @KafkaListener(topics = "inventory-events", groupId = "payment-service-group")
-    public void handleInventoryEvents(Object event) {
-        if (event instanceof InventoryReservedEvent inventoryReservedEvent) {
-            log.info("Received InventoryReservedEvent for order: {}", inventoryReservedEvent.getOrderId());
-            paymentService.processPayment(inventoryReservedEvent);
+    public void handleInventoryEvents(InventoryReservedEvent inventoryReservedEvent) {
+        log.info("Received InventoryReservedEvent for order: {}", inventoryReservedEvent.getOrderId());
+        paymentService.processPayment(inventoryReservedEvent);
         }
     }
 }
