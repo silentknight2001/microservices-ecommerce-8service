@@ -40,7 +40,7 @@ public class InventoryServiceImpl implements InventoryService {
 
         // Check if all items are available in sufficient quantity
         for (var orderItem : orderCreatedEvent.getItems()) {
-            InventoryItem item = inventoryRepository.findById(orderItem.getProductId().toString())
+            InventoryItem item = inventoryRepository.findByProductId(orderItem.getProductId().toString())
                     .orElse(null);
 
             if (item == null) {
@@ -95,7 +95,7 @@ public class InventoryServiceImpl implements InventoryService {
 
         // Update inventory quantities
         for (var reservationItem : reservationItems) {
-            InventoryItem item = inventoryRepository.findById(reservationItem.getProductId().toString()).orElseThrow();
+            InventoryItem item = inventoryRepository.findByProductId(reservationItem.getProductId().toString()).orElseThrow();
             item.setAvailableQuantity(item.getAvailableQuantity() - reservationItem.getQuantity());
             item.setReservedQuantity(item.getReservedQuantity() + reservationItem.getQuantity());
             inventoryRepository.save(item);
