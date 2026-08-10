@@ -67,6 +67,7 @@ public class InventoryController {
     private InventoryItemResponse mapToResponse(InventoryItem item) {
         return InventoryItemResponse.builder()
                 .id(item.getId())
+                .productId(item.getProductId())
                 .name(item.getName())
                 .description(item.getDescription())
                 .availableQuantity(item.getAvailableQuantity())
