@@ -18,6 +18,5 @@ public class PaymentSagaHandler {
     public void handleInventoryEvents(InventoryReservedEvent inventoryReservedEvent) {
         log.info("Received InventoryReservedEvent for order: {}", inventoryReservedEvent.getOrderId());
         paymentService.processPayment(inventoryReservedEvent);
-        }
     }
 }
