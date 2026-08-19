@@ -1,0 +1,31 @@
+# Global variables — no secrets here!
+
+# aws configuration
+aws_region: "ap-south-1"
+cluster_name: "ecommerce-eks-dev"
+
+# kubernetes
+namespace: "ecommerce"
+k8s_manifests_path: "{{ playbook_dir }}/../infrastructure/k8s"
+
+# ArgoCD
+argocd_namespace: "argocd"
+argocd_version: "stable"
+argocd_app_name: "ecommerce-app"
+argocd_repo_url: "https://github.com/silentknight2001/microservices-ecommerce-8service"
+argocd_repo_path: "infrastructure/k8s"
+argocd_target_revision: "HEAD"
+
+# storageclass
+storage_class_name: "gp2-csi"
+storage_provisioner: "ebs.csi.aws.com"
+
+# IMDS
+imds_hop_limit: 2
+
+# eks node group
+node_group_name: "ecommerce-eks-dev-node-group"
+node_role_name: "ecommerce-devopsify-dev-eksnode-role"
+
+# EBS CSI
+ebs_csi_policy_arn: "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
