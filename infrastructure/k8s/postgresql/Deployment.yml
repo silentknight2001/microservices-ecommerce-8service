@@ -40,6 +40,8 @@ spec:
               key: postgres-password
         - name: POSTGRES_MULTIPLE_DATABASES
           value: "order_db,payment_db,shipping_db"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
         resources:
           requests:
             memory: "256Mi"

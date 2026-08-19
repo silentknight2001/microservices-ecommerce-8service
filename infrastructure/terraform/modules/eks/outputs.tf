@@ -29,3 +29,8 @@ output "oidc_provider_arn" {
   description = "OIDC provider ARN"
   value       = aws_iam_openid_connect_provider.eks.arn
 }
+
+output "ebs_csi_role_arn" {
+  description = "EBS CSI IAM role ARN"
+  value       = aws_iam_role.ebs_csi.arn
+}
