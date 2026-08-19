@@ -1,0 +1,91 @@
+---
+# Inventory Service Secret 
+- name: Create inventory-service-secret
+  command: >
+    kubectl create secret generic inventory-service-secret
+    --namespace {{ namespace }}
+    --from-literal=mongodb-uri="mongodb://mongodb:27017/inventory-db"
+  register: inventory_secret
+  failed_when:
+    - inventory_secret.rc != 0
+    - "'already exists' not in inventory_secret.stderr"
+  changed_when: inventory_secret.rc == 0
+  tags: secrets
+
+# Notification Service Secret 
+- name: Create notification-service-secret
+  command: >
+    kubectl create secret generic notification-service-secret
+    --namespace {{ namespace }}
+    --from-literal=mongodb-uri="mongodb://mongodb:27017/notification-db"
+    --from-literal=redis-host="redis"
+  register: notification_secret
+  failed_when:
+    - notification_secret.rc != 0
+    - "'already exists' not in notification_secret.stderr"
+  changed_when: notification_secret.rc == 0
+  tags: secrets
+
+# Order Service Secret 
+- name: Create order-service-secret
+  command: >
+    kubectl create secret generic order-service-secret
+    --namespace {{ namespace }}
+    --from-literal=datasource-url="jdbc:postgresql://postgresql:5432/order_db"
+  register: order_secret
+  failed_when:
+    - order_secret.rc != 0
+    - "'already exists' not in order_secret.stderr"
+  changed_when: order_secret.rc == 0
+  tags: secrets
+
+# Payment Service Secret 
+- name: Create payment-service-secret
+  command: >
+    kubectl create secret generic payment-service-secret
+    --namespace {{ namespace }}
+    --from-literal=datasource-url="jdbc:postgresql://postgresql:5432/payment_db"
+  register: payment_secret
+  failed_when:
+    - payment_secret.rc != 0
+    - "'already exists' not in payment_secret.stderr"
+  changed_when: payment_secret.rc == 0
+  tags: secrets
+
+# Shipping Service Secret 
+- name: Create shipping-service-secret
+  command: >
+    kubectl create secret generic shipping-service-secret
+    --namespace {{ namespace }}
+    --from-literal=datasource-url="jdbc:postgresql://postgresql:5432/shipping_db"
+  register: shipping_secret
+  failed_when:
+    - shipping_secret.rc != 0
+    - "'already exists' not in shipping_secret.stderr"
+  changed_when: shipping_secret.rc == 0
+  tags: secrets
+
+# PostgreSQL Secret 
+- name: Create postgresql-secret
+  command: >
+    kubectl create secret generic postgresql-secret
+    --namespace {{ namespace }}
+    --from-literal=postgres-password="{{ postgres_password }}"
+  register: postgresql_secret
+  failed_when:
+    - postgresql_secret.rc != 0
+    - "'already exists' not in postgresql_secret.stderr"
+  changed_when: postgresql_secret.rc == 0
+  tags: secrets
+
+# Verify All Secrets Created 
+- name: Verify all secrets exist
+  command: kubectl get secrets -n {{ namespace }}
+  register: secrets_list
+  changed_when: false
+  tags: secrets
+
+- name: Print secrets list
+  debug:
+    msg: "{{ secrets_list.stdout_lines }}"
+  tags: secrets

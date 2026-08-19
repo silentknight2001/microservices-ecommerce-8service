@@ -1,0 +1,182 @@
+---
+# Verify namespace exists 
+- name: Verify ecommerce namespace exists
+  command: kubectl get namespace {{ namespace }}
+  register: ns_check
+  changed_when: false
+  failed_when: ns_check.rc != 0
+  tags: deploy
+
+# Deploy Infrastructure Services 
+- name: Deploy Zookeeper
+  command: kubectl apply -f {{ k8s_manifests_path }}/zookeeper/
+  register: zookeeper_result
+  changed_when: "'created' in zookeeper_result.stdout or
+                 'configured' in zookeeper_result.stdout"
+  tags: deploy
+
+- name: Deploy Kafka
+  command: kubectl apply -f {{ k8s_manifests_path }}/kafka/
+  register: kafka_result
+  changed_when: "'created' in kafka_result.stdout or
+                 'configured' in kafka_result.stdout"
+  tags: deploy
+
+- name: Deploy MongoDB
+  command: kubectl apply -f {{ k8s_manifests_path }}/mongodb/
+  register: mongodb_result
+  changed_when: "'created' in mongodb_result.stdout or
+                 'configured' in mongodb_result.stdout"
+  tags: deploy
+
+- name: Deploy PostgreSQL
+  command: kubectl apply -f {{ k8s_manifests_path }}/postgresql/
+  register: postgresql_result
+  changed_when: "'created' in postgresql_result.stdout or
+                 'configured' in postgresql_result.stdout"
+  tags: deploy
+
+- name: Deploy Redis
+  command: kubectl apply -f {{ k8s_manifests_path }}/redis/
+  register: redis_result
+  changed_when: "'created' in redis_result.stdout or
+                 'configured' in redis_result.stdout"
+  tags: deploy
+
+# Wait for infrastructure pods 
+- name: Wait for Zookeeper ready
+  command: >
+    kubectl rollout status deployment/zookeeper
+    -n {{ namespace }}
+    --timeout=120s
+  changed_when: false
+  tags: deploy
+
+- name: Wait for Kafka ready
+  command: >
+    kubectl rollout status deployment/kafka
+    -n {{ namespace }}
+    --timeout=120s
+  changed_when: false
+  tags: deploy
+
+- name: Wait for MongoDB ready
+  command: >
+    kubectl rollout status deployment/mongodb
+    -n {{ namespace }}
+    --timeout=180s
+  changed_when: false
+  tags: deploy
+
+- name: Wait for PostgreSQL ready
+  command: >
+    kubectl rollout status deployment/postgresql
+    -n {{ namespace }}
+    --timeout=180s
+  changed_when: false
+  tags: deploy
+
+- name: Wait for Redis ready
+  command: >
+    kubectl rollout status deployment/redis
+    -n {{ namespace }}
+    --timeout=120s
+  changed_when: false
+  tags: deploy
+
+#  Deploy Service Registry 
+- name: Deploy Service Registry
+  command: kubectl apply -f {{ k8s_manifests_path }}/service-registry/
+  register: registry_result
+  changed_when: "'created' in registry_result.stdout or
+                 'configured' in registry_result.stdout"
+  tags: deploy
+
+- name: Wait for Service Registry ready
+  command: >
+    kubectl rollout status deployment/service-registry
+    -n {{ namespace }}
+    --timeout=180s
+  changed_when: false
+  tags: deploy
+
+# Deploy Microservices 
+- name: Deploy Inventory Service
+  command: kubectl apply -f {{ k8s_manifests_path }}/inventory-service/
+  register: inventory_result
+  changed_when: "'created' in inventory_result.stdout or
+                 'configured' in inventory_result.stdout"
+  tags: deploy
+
+- name: Deploy Order Service
+  command: kubectl apply -f {{ k8s_manifests_path }}/order-service/
+  register: order_result
+  changed_when: "'created' in order_result.stdout or
+                 'configured' in order_result.stdout"
+  tags: deploy
+
+- name: Deploy Payment Service
+  command: kubectl apply -f {{ k8s_manifests_path }}/payment-service/
+  register: payment_result
+  changed_when: "'created' in payment_result.stdout or
+                 'configured' in payment_result.stdout"
+  tags: deploy
+
+- name: Deploy Notification Service
+  command: kubectl apply -f {{ k8s_manifests_path }}/notification-service/
+  register: notification_result
+  changed_when: "'created' in notification_result.stdout or
+                 'configured' in notification_result.stdout"
+  tags: deploy
+
+- name: Deploy Shipping Service
+  command: kubectl apply -f {{ k8s_manifests_path }}/shipping-service/
+  register: shipping_result
+  changed_when: "'created' in shipping_result.stdout or
+                 'configured' in shipping_result.stdout"
+  tags: deploy
+
+- name: Deploy API Gateway
+  command: kubectl apply -f {{ k8s_manifests_path }}/api-gateway/
+  register: gateway_result
+  changed_when: "'created' in gateway_result.stdout or
+                 'configured' in gateway_result.stdout"
+  tags: deploy
+
+# Wait for all microservices 
+- name: Wait for all microservices ready
+  command: >
+    kubectl rollout status deployment/{{ item }}
+    -n {{ namespace }}
+    --timeout=300s
+  loop:
+    - inventory-service
+    - order-service
+    - payment-service
+    - notification-service
+    - shipping-service
+    - api-gateway
+  changed_when: false
+  tags: deploy
+
+# Final verification 
+- name: Get all pods status
+  command: kubectl get pods -n {{ namespace }}
+  register: final_pods
+  changed_when: false
+  tags: deploy
+
+- name: Print final pod status
+  debug:
+    msg: "{{ final_pods.stdout_lines }}"
+  tags: deploy
+
+- name: Verify no pods in error state
+  command: >
+    kubectl get pods -n {{ namespace }}
+    --field-selector=status.phase!=Running
+    --field-selector=status.phase!=Succeeded
+  register: error_pods
+  changed_when: false
+  failed_when: error_pods.stdout | length > 0
+  tags: deploy

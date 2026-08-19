@@ -1,0 +1,141 @@
+---
+#Update Kubeconfig 
+- name: Update kubeconfig for EKS cluster
+  command: >
+    aws eks update-kubeconfig
+    --region {{ aws_region }}
+    --name {{ cluster_name }}
+  changed_when: false
+  tags: kubeconfig
+
+#  Verify cluster connection 
+- name: Verify kubectl can connect to cluster
+  command: kubectl cluster-info
+  register: cluster_info
+  changed_when: false
+  failed_when: cluster_info.rc != 0
+  tags: kubeconfig
+
+- name: Print cluster info
+  debug:
+    msg: "{{ cluster_info.stdout_lines }}"
+  tags: kubeconfig
+
+# Get EC2 node instance IDs 
+- name: Get EKS worker node instance IDs
+  command: >
+    aws eks describe-nodegroup
+    --cluster-name {{ cluster_name }}
+    --nodegroup-name {{ node_group_name }}
+    --region {{ aws_region }}
+    --query 'nodegroup.resources.autoScalingGroups[0].name'
+    --output text
+  register: asg_name
+  changed_when: false
+  tags: imds
+
+- name: Get instance IDs from Auto Scaling Group
+  command: >
+    aws autoscaling describe-auto-scaling-groups
+    --auto-scaling-group-names {{ asg_name.stdout }}
+    --region {{ aws_region }}
+    --query 'AutoScalingGroups[0].Instances[].InstanceId'
+    --output text
+  register: instance_ids
+  changed_when: false
+  tags: imds
+
+- name: Print instance IDs
+  debug:
+    msg: "Node instances: {{ instance_ids.stdout }}"
+  tags: imds
+
+# Set IMDS hop limit on all nodes 
+- name: Set IMDS hop limit to 2 on each node
+  command: >
+    aws ec2 modify-instance-metadata-options
+    --instance-id {{ item }}
+    --http-put-response-hop-limit {{ imds_hop_limit }}
+    --http-endpoint enabled
+    --region {{ aws_region }}
+  loop: "{{ instance_ids.stdout.split() }}"
+  register: imds_result
+  changed_when: imds_result.rc == 0
+  tags: imds
+
+- name: Confirm IMDS hop limit updated
+  debug:
+    msg: "IMDS hop limit set to {{ imds_hop_limit }} on {{ item }}"
+  loop: "{{ instance_ids.stdout.split() }}"
+  tags: imds
+
+# Attach EBS policy to node role 
+- name: Attach EBS CSI policy to node IAM role
+  command: >
+    aws iam attach-role-policy
+    --role-name {{ node_role_name }}
+    --policy-arn {{ ebs_csi_policy_arn }}
+  register: policy_attach
+  failed_when:
+    - policy_attach.rc != 0
+    - "'already attached' not in policy_attach.stderr"
+  changed_when: policy_attach.rc == 0
+  tags: iam
+
+# Create namespace 
+- name: Create ecommerce namespace
+  command: >
+    kubectl create namespace {{ namespace }}
+  register: ns_result
+  failed_when:
+    - ns_result.rc != 0
+    - "'already exists' not in ns_result.stderr"
+  changed_when: ns_result.rc == 0
+  tags: namespace
+
+# Apply StorageClass 
+- name: Apply gp2-csi StorageClass
+  command: >
+    kubectl apply -f
+    {{ k8s_manifests_path }}/storageclass.yml
+  register: sc_result
+  changed_when: "'created' in sc_result.stdout or
+                 'configured' in sc_result.stdout"
+  tags: storage
+
+- name: Verify StorageClass created
+  command: kubectl get storageclass {{ storage_class_name }}
+  register: sc_check
+  changed_when: false
+  failed_when: sc_check.rc != 0
+  tags: storage
+
+- name: Print StorageClass status
+  debug:
+    msg: "StorageClass: {{ sc_check.stdout }}"
+  tags: storage
+
+# Restart EBS CSI controller 
+- name: Restart EBS CSI controller
+  command: >
+    kubectl rollout restart
+    deployment/ebs-csi-controller
+    -n kube-system
+  changed_when: true
+  tags: storage
+
+- name: Wait for EBS CSI controller ready
+  command: >
+    kubectl rollout status
+    deployment/ebs-csi-controller
+    -n kube-system
+    --timeout=120s
+  register: csi_status
+  changed_when: false
+  failed_when: csi_status.rc != 0
+  tags: storage
+
+- name: Print CSI status
+  debug:
+    msg: "{{ csi_status.stdout }}"
+  tags: storage
