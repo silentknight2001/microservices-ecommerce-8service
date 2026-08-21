@@ -4,51 +4,54 @@
   gather_facts: false
 
   pre_tasks:
-    - name: Verify required tools installed
-      block:
-        - name: Check kubectl
-          command: kubectl version --client
-          register: kubectl_check
-          changed_when: false
+  - name: Verify required tools installed
+    block:
+    - name: Check kubectl
+      command: kubectl version --client
+      register: kubectl_check
+      changed_when: false
 
-        - name: Check AWS CLI
-          command: aws --version
-          register: aws_check
-          changed_when: false
+    - name: Check AWS CLI
+      command: aws --version
+      register: aws_check
+      changed_when: false
 
-        - name: Check Helm
-          command: helm version
-          register: helm_check
-          changed_when: false
+    - name: Check Helm
+      command: helm version
+      register: helm_check
+      changed_when: false
 
-        - name: Print tool versions
-          debug:
-            msg:
-              - "kubectl: {{ kubectl_check.stdout }}"
-              - "aws: {{ aws_check.stdout }}"
-              - "helm: {{ helm_check.stdout }}"
+    - name: Print tool versions
+      debug:
+        msg:
+        - "kubectl: {{ kubectl_check.stdout }}"
+        - "aws: {{ aws_check.stdout }}"
+        - "helm: {{ helm_check.stdout }}"
 
   roles:
-    - role: eks-setup
-      tags: eks
+  - role: eks-setup
+    tags: eks
 
-    - role: k8s-secrets
-      tags: secrets
+  - role: k8s-secrets
+    tags: secrets
 
-    - role: k8s-deploy
-      tags: deploy
+  - role: k8s-deploy
+    tags: deploy
 
-    - role: argocd
-      tags: argocd
+  - role: argocd
+    tags: argocd
+
+  - role: alb
+    tags: alb
 
   post_tasks:
-    - name: Final verification
-      block:
-        - name: Check all pods running
-          command: kubectl get pods -n {{ namespace }}
-          register: pods_status
-          changed_when: false
+  - name: Final verification
+    block:
+    - name: Check all pods running
+      command: kubectl get pods -n {{ namespace }}
+      register: pods_status
+      changed_when: false
 
-        - name: Print pod status
-          debug:
-            msg: "{{ pods_status.stdout_lines }}" 
+    - name: Print pod status
+      debug:
+        msg: "{{ pods_status.stdout_lines }}"
