@@ -1,0 +1,101 @@
+---
+# Add EKS Helm Repository 
+- name: Add EKS Helm repository
+  command: >
+    helm repo add eks {{ alb_controller_chart_repo }}
+  register: helm_repo
+  changed_when: "'already exists' not in helm_repo.stdout"
+  failed_when:
+  - helm_repo.rc != 0
+  - "'already exists' not in helm_repo.stdout"
+  tags: alb
+
+# Update Helm Repositories 
+- name: Update Helm repositories
+  command: helm repo update
+  changed_when: true
+  tags: alb
+
+# Get Cluster VPC ID 
+- name: Get EKS cluster VPC ID
+  command: >
+    aws eks describe-cluster --name {{ cluster_name }} --region {{ aws_region }} --query "cluster.resourcesVpcConfig.vpcId" --output text
+  register: vpc_id
+  changed_when: false
+  tags: alb
+
+- name: Print VPC ID
+  debug:
+    msg: "VPC ID: {{ vpc_id.stdout }}"
+  tags: alb
+
+# Install ALB Controller 
+- name: Install AWS Load Balancer Controller
+  command: >
+    helm upgrade --install {{ alb_controller_chart_name }} eks/aws-load-balancer-controller --namespace kube-system --set clusterName={{ cluster_name }} --set serviceAccount.create=true --set serviceAccount.name=aws-load-balancer-controller --set region={{ aws_region }} --set vpcId={{ vpc_id.stdout }} --version {{ alb_controller_version }} --wait --timeout 5m
+  register: alb_install
+  changed_when: alb_install.rc == 0
+  failed_when: alb_install.rc != 0
+  tags: alb
+
+- name: Print ALB controller install result
+  debug:
+    msg: "{{ alb_install.stdout_lines }}"
+  tags: alb
+
+# Verify ALB Controller Running 
+- name: Wait for ALB controller ready
+  command: >
+    kubectl rollout status deployment/aws-load-balancer-controller -n kube-system --timeout=120s
+  register: alb_status
+  changed_when: false
+  failed_when: alb_status.rc != 0
+  tags: alb
+
+- name: Verify ALB controller pods
+  command: >
+    kubectl get pods -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller
+  register: alb_pods
+  changed_when: false
+  tags: alb
+
+- name: Print ALB controller pods
+  debug:
+    msg: "{{ alb_pods.stdout_lines }}"
+  tags: alb
+
+#  Apply Ingress Resource 
+- name: Apply Ingress resource
+  command: >
+    kubectl apply -f {{ k8s_manifests_path }}/ingress.yml
+  register: ingress_result
+  changed_when: "'created' in ingress_result.stdout or 'configured' in ingress_result.stdout"
+  failed_when: ingress_result.rc != 0
+  tags: alb
+
+# Wait for ALB to be created 
+- name: Wait for ALB DNS name
+  command: >
+    kubectl get ingress ecommerce-ingress -n {{ namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+  register: alb_dns
+  until: alb_dns.stdout != ""
+  retries: 30
+  delay: 10
+  changed_when: false
+  tags: alb
+
+#  Print ALB DNS 
+- name: Print ALB DNS name
+  debug:
+    msg: "ALB DNS: {{ alb_dns.stdout }} — Use this URL to access your application!"
+  tags: alb
+
+# Save ALB DNS to file 
+- name: Save ALB DNS to local file
+  copy:
+    content: |
+      ALB DNS: {{ alb_dns.stdout }}
+      API URL: http://{{ alb_dns.stdout }}/api/orders
+    dest: "/tmp/alb-dns.txt"
+    mode: "0644"
+  tags: alb
