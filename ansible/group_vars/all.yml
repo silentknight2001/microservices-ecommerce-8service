@@ -1,5 +1,3 @@
-# Global variables — no secrets here!
-
 # aws configuration
 aws_region: "ap-south-1"
 cluster_name: "ecommerce-eks-dev"
@@ -29,3 +27,8 @@ node_role_name: "ecommerce-devopsify-dev-eksnode-role"
 
 # EBS CSI
 ebs_csi_policy_arn: "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+
+# ALB Controller
+alb_controller_version: "1.7.2"
+alb_controller_chart_repo: "https://aws.github.io/eks-charts"
+alb_controller_chart_name: "aws-load-balancer-controller"
