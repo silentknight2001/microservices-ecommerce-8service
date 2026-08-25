@@ -3,8 +3,8 @@ aws_region: "ap-south-1"
 cluster_name: "ecommerce-eks-dev"
 
 # kubernetes
-namespace: "ecommerce"
-k8s_manifests_path: "{{ playbook_dir }}/../infrastructure/k8s"
+k8s_namespace: "ecommerce"
+k8s_manifests_path: "{{ playbook_dir }}/../../infrastructure/k8s"
 
 # ArgoCD
 argocd_namespace: "argocd"
@@ -32,3 +32,5 @@ ebs_csi_policy_arn: "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPoli
 alb_controller_version: "1.7.2"
 alb_controller_chart_repo: "https://aws.github.io/eks-charts"
 alb_controller_chart_name: "aws-load-balancer-controller"
+
+postgres_password: "{{ vault_postgres_password }}"
