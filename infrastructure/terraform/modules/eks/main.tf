@@ -26,7 +26,7 @@ resource "aws_eks_cluster" "main" {
 
 # Eks Node Group ........ 
 
-resource "aws_eks_node_group" "mian" {
+resource "aws_eks_node_group" "main" {
     cluster_name = aws_eks_cluster.main.name 
     node_group_name = "${var.cluster_name}-node-group"
     node_role_arn = var.eks_node_group_role_arn
@@ -44,6 +44,12 @@ resource "aws_eks_node_group" "mian" {
       max_unavailable = 1
     }
 
+    launch_template {
+      name    = aws_launch_template.eks_nodes.name
+      version = aws_launch_template.eks_nodes.latest_version
+    }
+
+
     labels = {
       Environment = var.environment
       nodeGroup = "main"
@@ -55,6 +61,24 @@ resource "aws_eks_node_group" "mian" {
 
     depends_on = [ aws_eks_cluster.main ]
   
+}
+
+resource "aws_launch_template" "eks_nodes" {
+  name = "${var.cluster_name}-node-launch-template"
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "optional"
+    http_put_response_hop_limit = 2  
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name        = "${var.cluster_name}-node"
+      Environment = var.environment
+    }
+  }
 }
 
 # OIDC provider (for IAm role for service account)... 
@@ -81,41 +105,44 @@ resource "aws_iam_openid_connect_provider" "eks" {
 
 #  EBS CSI Driver Addon ......... 
 
-resource "aws_iam_role" "ebs_csi" {
-  name = "${var.cluster_name}-ebs-csi-role"
+# resource "aws_iam_role" "ebs_csi" {
+#   name = "${var.cluster_name}-ebs-csi-role"
 
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Principal = {
-        Federated = aws_iam_openid_connect_provider.eks.arn
-      }
-      Action = "sts:AssumeRoleWithWebIdentity"
-      Condition = {
-        StringEquals = {
-          "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud" = "sts.amazonaws.com"
-          "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub" = "system:serviceaccount:kube-system:ebs-csi-controller-sa"
-        }
-      }
-    }]
-  })
-}
+#   assume_role_policy = jsonencode({
+#     Version = "2012-10-17"
+#     Statement = [{
+#       Effect = "Allow"
+#       Principal = {
+#         Federated = aws_iam_openid_connect_provider.eks.arn
+#       }
+#       Action = "sts:AssumeRoleWithWebIdentity"
+#       Condition = {
+#         StringEquals = {
+#           "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud" = "sts.amazonaws.com"
+#           "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub" = "system:serviceaccount:kube-system:ebs-csi-controller-sa"
+#         }
+#       }
+#     }]
+#   })
+# }
 
-resource "aws_iam_role_policy_attachment" "ebs_csi" {
-  role       = aws_iam_role.ebs_csi.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
-}
+# resource "aws_iam_role_policy_attachment" "ebs_csi" {
+#   role       = aws_iam_role.ebs_csi.name
+#   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+# }
 
 resource "aws_eks_addon" "ebs_csi" {
   cluster_name             = aws_eks_cluster.main.name
   addon_name               = "aws-ebs-csi-driver"
-  service_account_role_arn = aws_iam_role.ebs_csi.arn
+  # service_account_role_arn = aws_iam_role.ebs_csi.arn
   resolve_conflicts_on_create = "OVERWRITE"
 
+   timeouts {
+    create = "30m"  
+  }
+
   depends_on = [
-    aws_eks_node_group.mian,
-    aws_iam_role_policy_attachment.ebs_csi
+    aws_eks_node_group.main,
   ]
 }
 
