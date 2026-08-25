@@ -1,0 +1,62 @@
+[
+    [
+        {
+            "Key": "kubernetes.io/cluster/ecommerce-eks-dev",
+            "Value": "shared"
+        },
+        {
+            "Key": "ManagedBy",
+            "Value": "terraform"
+        },
+        {
+            "Key": "kubernetes.io/role/elb",
+            "Value": "1"
+        },
+        {
+            "Key": "Project",
+            "Value": "ecommerce-devopsify"
+        },
+        {
+            "Key": "Environment",
+            "Value": "dev"
+        },
+        {
+            "Key": "Name",
+            "Value": "ecommerce-devopsify-dev-public-1"
+        },
+        {
+            "Key": "Owner",
+            "Value": "devops"
+        }
+    ],
+    [
+        {
+            "Key": "Owner",
+            "Value": "devops"
+        },
+        {
+            "Key": "ManagedBy",
+            "Value": "terraform"
+        },
+        {
+            "Key": "kubernetes.io/cluster/ecommerce-eks-dev",
+            "Value": "shared"
+        },
+        {
+            "Key": "Project",
+            "Value": "ecommerce-devopsify"
+        },
+        {
+            "Key": "Name",
+            "Value": "ecommerce-devopsify-dev-public-2"
+        },
+        {
+            "Key": "Environment",
+            "Value": "dev"
+        },
+        {
+            "Key": "kubernetes.io/role/elb",
+            "Value": "1"
+        }
+    ]
+]
