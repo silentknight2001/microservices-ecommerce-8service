@@ -2,6 +2,9 @@
 - name: Complete EKS Setup
   hosts: localhost
   gather_facts: false
+  vars_files:
+  - ../group_vars/all.yml
+  - ../group_vars/vault.yml
 
   pre_tasks:
   - name: Verify required tools installed
@@ -35,8 +38,8 @@
   - role: k8s-secrets
     tags: secrets
 
-  - role: k8s-deploy
-    tags: deploy
+  # - role: k8s-deploy
+  #   tags: deploy
 
   - role: argocd
     tags: argocd
@@ -48,7 +51,7 @@
   - name: Final verification
     block:
     - name: Check all pods running
-      command: kubectl get pods -n {{ namespace }}
+      command: kubectl get pods -n {{ k8s_namespace }}
       register: pods_status
       changed_when: false
 
