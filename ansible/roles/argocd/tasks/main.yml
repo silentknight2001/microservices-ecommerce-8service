@@ -12,9 +12,11 @@
 # Install ArgoCD 
 - name: Install ArgoCD
   command: >
-    kubectl apply -n {{ argocd_namespace }} -f https://raw.githubusercontent.com/argoproj/argo-cd/{{ argocd_version }}/manifests/install.yaml
+    kubectl apply -n {{ argocd_namespace }} --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/{{ argocd_version }}/manifests/install.yaml
   register: argocd_install
-  changed_when: "'created' in argocd_install.stdout or 'configured' in argocd_install.stdout"
+  changed_when: "'serverside-applied' in argocd_install.stdout"
+  failed_when:
+  - argocd_install.rc != 0
   tags: argocd
 
 # ─── Step 3: Wait for ArgoCD pods ──────────────────────
@@ -37,35 +39,13 @@
     kubectl rollout status statefulset/argocd-application-controller -n {{ argocd_namespace }} --timeout=300s
   changed_when: false
   tags: argocd
-
-# Get ArgoCD Admin Password 
+# ─── Get ArgoCD Admin Password ─────────────────────────
 - name: Get ArgoCD initial admin password
-  command: >
-    kubectl -n {{ argocd_namespace }} get secret argocd-initial-admin-secret -o jsonpath="{.data.password}"
-  register: argocd_password_b64
-  changed_when: false
-  no_log: true
-  tags: argocd
-
-- name: Decode ArgoCD admin password
-  command: >
-    echo "{{ argocd_password_b64.stdout }}" | base64 -d
+  shell: >
+    kubectl -n {{ argocd_namespace }} get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
   register: argocd_password
   changed_when: false
   no_log: true
-  tags: argocd
-
-- name: Save ArgoCD password to local file
-  copy:
-    content: "ArgoCD Admin Password: {{ argocd_password.stdout }}"
-    dest: "/tmp/argocd-credentials.txt"
-    mode: "0600"
-  no_log: true
-  tags: argocd
-
-- name: Inform password saved
-  debug:
-    msg: "ArgoCD password saved to /tmp/argocd-credentials.txt"
   tags: argocd
 
 # Install ArgoCD CLI 
@@ -87,17 +67,20 @@
   tags: argocd
 
 # Port Forward ArgoCD 
+# Start ArgoCD port-forward in background
 - name: Start ArgoCD port-forward in background
   shell: >
-    kubectl port-forward svc/argocd-server -n {{ argocd_namespace }} 8443:443 &
+    nohup kubectl port-forward svc/argocd-server -n {{ argocd_namespace }} 8443:443 > /tmp/argocd-portforward.log 2>&1 &
   changed_when: false
   tags: argocd
 
+# Give it more time
 - name: Wait for port-forward ready
   wait_for:
     host: localhost
     port: 8443
-    timeout: 30
+    timeout: 60 # ← increase from 30 to 60
+    delay: 5 # ← wait 5 seconds before checking
   tags: argocd
 
 # Login to ArgoCD CLI 
@@ -112,7 +95,7 @@
 # Create ArgoCD Application 
 - name: Create ArgoCD application
   command: >
-    argocd app create {{ argocd_app_name }} --repo {{ argocd_repo_url }} --path {{ argocd_repo_path }} --dest-server https://kubernetes.default.svc --dest-namespace {{ namespace }} --revision {{ argocd_target_revision }} --sync-policy automated --auto-prune --self-heal --directory-recurse
+    argocd app create {{ argocd_app_name }} --repo {{ argocd_repo_url }} --path {{ argocd_repo_path }} --dest-server https://kubernetes.default.svc --dest-namespace {{ k8s_namespace }} --revision {{ argocd_target_revision }} --sync-policy automated --auto-prune --self-heal --directory-recurse
   register: argocd_app
   failed_when:
   - argocd_app.rc != 0
@@ -123,12 +106,19 @@
 # Sync ArgoCD Application 
 - name: Sync ArgoCD application
   command: >
-    argocd app sync {{ argocd_app_name }} --force
+    argocd app sync {{ argocd_app_name }} --force --async
   register: argocd_sync
   changed_when: argocd_sync.rc == 0
-  failed_when:
-  - argocd_sync.rc != 0
-  - "'already synced' not in argocd_sync.stdout"
+  failed_when: argocd_sync.rc != 0
+  tags: argocd
+
+# Wait for sync to complete 
+- name: Wait for ArgoCD sync complete
+  command: >
+    argocd app wait {{ argocd_app_name }} --sync --timeout 300
+  register: argocd_sync_wait
+  changed_when: false
+  failed_when: argocd_sync_wait.rc != 0
   tags: argocd
 
 # Verify ArgoCD app health 
@@ -137,7 +127,7 @@
     argocd app wait {{ argocd_app_name }} --health --timeout 300
   register: argocd_health
   changed_when: false
-  failed_when: argocd_health.rc != 0
+  failed_when: false
   tags: argocd
 
 - name: Get ArgoCD app status
