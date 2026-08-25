@@ -76,18 +76,23 @@
 # Wait for ALB to be created 
 - name: Wait for ALB DNS name
   command: >
-    kubectl get ingress ecommerce-ingress -n {{ namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+    kubectl get ingress ecommerce-ingress -n {{ k8s_namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
   register: alb_dns
   until: alb_dns.stdout != ""
   retries: 30
   delay: 10
   changed_when: false
+  when:
+  - not ansible_check_mode
   tags: alb
 
 #  Print ALB DNS 
 - name: Print ALB DNS name
   debug:
     msg: "ALB DNS: {{ alb_dns.stdout }} — Use this URL to access your application!"
+  when:
+  - not ansible_check_mode
+  - alb_dns is defined
   tags: alb
 
 # Save ALB DNS to file 
@@ -98,4 +103,7 @@
       API URL: http://{{ alb_dns.stdout }}/api/orders
     dest: "/tmp/alb-dns.txt"
     mode: "0644"
+  when:
+  - not ansible_check_mode
+  - alb_dns is defined
   tags: alb
