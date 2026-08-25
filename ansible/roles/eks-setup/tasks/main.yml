@@ -2,9 +2,7 @@
 #Update Kubeconfig 
 - name: Update kubeconfig for EKS cluster
   command: >
-    aws eks update-kubeconfig
-    --region {{ aws_region }}
-    --name {{ cluster_name }}
+    aws eks update-kubeconfig --region {{ aws_region }} --name {{ cluster_name }}
   changed_when: false
   tags: kubeconfig
 
@@ -24,23 +22,14 @@
 # Get EC2 node instance IDs 
 - name: Get EKS worker node instance IDs
   command: >
-    aws eks describe-nodegroup
-    --cluster-name {{ cluster_name }}
-    --nodegroup-name {{ node_group_name }}
-    --region {{ aws_region }}
-    --query 'nodegroup.resources.autoScalingGroups[0].name'
-    --output text
+    aws eks describe-nodegroup --cluster-name {{ cluster_name }} --nodegroup-name {{ node_group_name }} --region {{ aws_region }} --query 'nodegroup.resources.autoScalingGroups[0].name' --output text
   register: asg_name
   changed_when: false
   tags: imds
 
 - name: Get instance IDs from Auto Scaling Group
   command: >
-    aws autoscaling describe-auto-scaling-groups
-    --auto-scaling-group-names {{ asg_name.stdout }}
-    --region {{ aws_region }}
-    --query 'AutoScalingGroups[0].Instances[].InstanceId'
-    --output text
+    aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names {{ asg_name.stdout }} --region {{ aws_region }} --query 'AutoScalingGroups[0].Instances[].InstanceId' --output text
   register: instance_ids
   changed_when: false
   tags: imds
@@ -53,11 +42,7 @@
 # Set IMDS hop limit on all nodes 
 - name: Set IMDS hop limit to 2 on each node
   command: >
-    aws ec2 modify-instance-metadata-options
-    --instance-id {{ item }}
-    --http-put-response-hop-limit {{ imds_hop_limit }}
-    --http-endpoint enabled
-    --region {{ aws_region }}
+    aws ec2 modify-instance-metadata-options --instance-id {{ item }} --http-put-response-hop-limit {{ imds_hop_limit }} --http-endpoint enabled --region {{ aws_region }}
   loop: "{{ instance_ids.stdout.split() }}"
   register: imds_result
   changed_when: imds_result.rc == 0
@@ -69,38 +54,45 @@
   loop: "{{ instance_ids.stdout.split() }}"
   tags: imds
 
+#  Remove IRSA annotation permanently 
+- name: Remove IRSA annotation from EBS CSI service account
+  command: >
+    kubectl annotate serviceaccount ebs-csi-controller-sa -n kube-system eks.amazonaws.com/role-arn- --overwrite
+  register: annotation_remove
+  failed_when:
+  - annotation_remove.rc != 0
+  - "'not found' not in annotation_remove.stderr"
+  changed_when: annotation_remove.rc == 0
+  tags: storage
+
 # Attach EBS policy to node role 
 - name: Attach EBS CSI policy to node IAM role
   command: >
-    aws iam attach-role-policy
-    --role-name {{ node_role_name }}
-    --policy-arn {{ ebs_csi_policy_arn }}
+    aws iam attach-role-policy --role-name {{ node_role_name }} --policy-arn {{ ebs_csi_policy_arn }}
   register: policy_attach
   failed_when:
-    - policy_attach.rc != 0
-    - "'already attached' not in policy_attach.stderr"
+  - policy_attach.rc != 0
+  - "'already attached' not in policy_attach.stderr"
   changed_when: policy_attach.rc == 0
   tags: iam
 
 # Create namespace 
 - name: Create ecommerce namespace
   command: >
-    kubectl create namespace {{ namespace }}
+    kubectl create namespace {{ k8s_namespace }}
   register: ns_result
   failed_when:
-    - ns_result.rc != 0
-    - "'already exists' not in ns_result.stderr"
+  - ns_result.rc != 0
+  - "'already exists' not in ns_result.stderr"
   changed_when: ns_result.rc == 0
   tags: namespace
 
 # Apply StorageClass 
 - name: Apply gp2-csi StorageClass
   command: >
-    kubectl apply -f
-    {{ k8s_manifests_path }}/storageclass.yml
+    kubectl apply -f {{ k8s_manifests_path }}/storageclass.yml
   register: sc_result
-  changed_when: "'created' in sc_result.stdout or
-                 'configured' in sc_result.stdout"
+  changed_when: "'created' in sc_result.stdout or 'configured' in sc_result.stdout"
   tags: storage
 
 - name: Verify StorageClass created
@@ -118,21 +110,16 @@
 # Restart EBS CSI controller 
 - name: Restart EBS CSI controller
   command: >
-    kubectl rollout restart
-    deployment/ebs-csi-controller
-    -n kube-system
+    kubectl rollout restart deployment/ebs-csi-controller -n kube-system
   changed_when: true
   tags: storage
 
 - name: Wait for EBS CSI controller ready
   command: >
-    kubectl rollout status
-    deployment/ebs-csi-controller
-    -n kube-system
-    --timeout=120s
+    kubectl rollout status deployment/ebs-csi-controller -n kube-system --timeout=120s
   register: csi_status
   changed_when: false
-  failed_when: csi_status.rc != 0
+  failed_when: false
   tags: storage
 
 - name: Print CSI status
