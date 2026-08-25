@@ -58,6 +58,7 @@ application-*.properties
 # Terraform directories
 .terraform/
 .terraform.lock.hcl
+group_vars/vault.yml
 
 # State files
 *.tfstate
