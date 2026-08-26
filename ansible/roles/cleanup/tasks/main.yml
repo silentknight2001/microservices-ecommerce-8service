@@ -1,0 +1,48 @@
+---
+# Delete Ingress (triggers ALB cleanup) 
+- name: Delete ingress resource
+  command: >
+    kubectl delete ingress ecommerce-ingress -n {{ k8s_namespace }}
+  register: ingress_delete
+  failed_when:
+  - ingress_delete.rc != 0
+  - "'not found' not in ingress_delete.stderr"
+  changed_when: ingress_delete.rc == 0
+  tags: cleanup
+
+# Wait for ALB deletion 
+- name: Wait for ALB to be deleted
+  pause:
+    seconds: 60
+  tags: cleanup
+
+# Delete orphaned security groups 
+- name: Get VPC ID
+  command: >
+    aws eks describe-cluster --name {{ cluster_name }} --region {{ aws_region }} --query "cluster.resourcesVpcConfig.vpcId" --output text
+  register: vpc_id
+  changed_when: false
+  failed_when: false
+  tags: cleanup
+
+- name: Delete orphaned ALB security groups
+  shell: |
+    for sg in $(aws ec2 describe-security-groups \
+      --filters "Name=vpc-id,Values={{ vpc_id.stdout }}" \
+      --query 'SecurityGroups[?contains(GroupName, `k8s`)].GroupId' \
+      --output text \
+      --region {{ aws_region }}); do
+      echo "Deleting security group: $sg"
+      aws ec2 delete-security-group \
+        --group-id $sg \
+        --region {{ aws_region }} || true
+    done
+  register: sg_cleanup
+  changed_when: true
+  failed_when: false
+  tags: cleanup
+
+- name: Print cleanup result
+  debug:
+    msg: "{{ sg_cleanup.stdout_lines }}"
+  tags: cleanup
