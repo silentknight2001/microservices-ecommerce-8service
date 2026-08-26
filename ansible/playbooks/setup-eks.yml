@@ -40,12 +40,11 @@
 
   # - role: k8s-deploy
   #   tags: deploy
+  - role: alb
+    tags: alb
 
   - role: argocd
     tags: argocd
-
-  - role: alb
-    tags: alb
 
   post_tasks:
   - name: Final verification
