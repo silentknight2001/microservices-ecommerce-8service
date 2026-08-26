@@ -16,8 +16,8 @@ on:
       - staging
       - develop
     paths:
-      - 'ansible/**'            
-      - 'infrastructure/k8s/**' 
+      - 'ansible/**'
+      - 'infrastructure/k8s/**'
 
   workflow_dispatch:
     inputs:
@@ -45,6 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     if: >
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
       github.event.workflow_run.conclusion == 'success'
     outputs:
       environment: ${{ steps.set-env.outputs.environment }}
@@ -54,6 +55,14 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
             ENV="${{ github.event.inputs.environment }}"
+          elif [ "${{ github.event_name }}" == "push" ]; then
+            if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+              ENV="dev"
+            elif [ "${{ github.ref }}" == "refs/heads/staging" ]; then
+              ENV="staging"
+            else
+              ENV="dev"
+            fi
           elif [ "${{ github.event.workflow_run.head_branch }}" == "main" ]; then
             ENV="dev"
           elif [ "${{ github.event.workflow_run.head_branch }}" == "staging" ]; then
@@ -83,7 +92,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      #  Install Tools 
+      # Install Tools 
       - name: Install kubectl
         uses: azure/setup-kubectl@v3
         with:
@@ -137,11 +146,12 @@ jobs:
 
       # Cleanup Vault Password 
       - name: Cleanup vault password file
-        if: always()    # ← runs even if playbook fails
+        if: always()
         run: rm -f /tmp/.vault_pass
 
       # Get ALB DNS 
       - name: Get ALB DNS
+        id: alb
         run: |
           ALB_DNS=$(kubectl get ingress ecommerce-ingress \
             -n ecommerce \
@@ -149,19 +159,19 @@ jobs:
             2>/dev/null || echo "Not yet assigned")
           echo "ALB DNS: $ALB_DNS"
           echo "alb_dns=$ALB_DNS" >> $GITHUB_OUTPUT
-        id: alb
 
-      #  Health Check 
+      # Health Check 
       - name: Health check application
         run: |
           ALB_DNS="${{ steps.alb.outputs.alb_dns }}"
           if [ "$ALB_DNS" != "Not yet assigned" ]; then
-            curl -f http://$ALB_DNS/actuator/health || echo "Health check failed"
+            curl -f http://$ALB_DNS/actuator/health || \
+              echo "Health check failed - ALB may still be provisioning"
           else
             echo "ALB DNS not assigned yet"
           fi
 
-      
+      #  Deployment Summary 
       - name: Print deployment summary
         if: always()
         run: |
@@ -172,4 +182,9 @@ jobs:
           echo "Cluster: ecommerce-eks-${{ needs.set-environment.outputs.environment }}"
           echo "ALB DNS: ${{ steps.alb.outputs.alb_dns }}"
           echo "================================"
-          kubectl get pods -n ecommerce
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ecommerce-eks-${{ needs.set-environment.outputs.environment }} \
+            2>/dev/null || true
+          kubectl get pods -n ecommerce 2>/dev/null || \
+            echo "Could not connect to cluster"
