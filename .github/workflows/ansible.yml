@@ -105,7 +105,7 @@ jobs:
 
       - name: Install Ansible
         run: |
-          pip install ansible==9.0.0
+          pip install ansible
           ansible --version
 
       - name: Install ArgoCD CLI
