@@ -136,7 +136,7 @@ jobs:
         working-directory: ${{ env.ANSIBLE_DIR }}
         env:
           ANSIBLE_HOST_KEY_CHECKING: "False"
-          ANSIBLE_STDOUT_CALLBACK: "yaml"
+        #   ANSIBLE_STDOUT_CALLBACK: "yaml"
         run: |
           ansible-playbook playbooks/setup-eks.yml \
             --vault-password-file /tmp/.vault_pass \
