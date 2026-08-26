@@ -1,0 +1,167 @@
+name: Terraform Infrastructure
+
+on:
+  push:
+    branches:
+      - main
+      - staging
+      - develop
+    paths:
+      - 'infrastructure/terraform/**'
+  pull_request:
+    branches:
+      - main
+      - staging
+      - develop
+    paths:
+      - 'infrastructure/terraform/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+          
+concurrency:
+  group: terraform-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-south-1
+  TF_VERSION: 1.12.2
+  WORKING_DIR: infrastructure/terraform
+
+jobs:
+  set-environment:
+    name: Set Environment
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      tfvars_file: ${{ steps.set-env.outputs.tfvars_file }}
+    steps:
+      - name: Determine environment
+        id: set-env
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            ENV="${{ github.event.inputs.environment }}"
+          elif [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            ENV="dev"
+          elif [ "${{ github.ref }}" == "refs/heads/staging" ]; then
+            ENV="staging"
+          else
+            ENV="dev"
+          fi
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "tfvars_file=environments/$ENV/terraform.tfvars" >> $GITHUB_OUTPUT
+          echo "Running for environment: $ENV"
+
+  terraform-plan:
+    name: Terraform Plan (${{ needs.set-environment.outputs.environment }})
+    runs-on: ubuntu-latest
+    needs: set-environment
+    environment: ${{ needs.set-environment.outputs.environment }}
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="bucket=ecommerce-devopsify-terraform-state" \
+            -backend-config="key=ecommerce/${{ needs.set-environment.outputs.environment }}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: |
+          terraform plan \
+            -var-file="${{ needs.set-environment.outputs.tfvars_file }}" \
+            -out=tfplan \
+            -no-color
+
+      - name: Upload Plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-${{ needs.set-environment.outputs.environment }}
+          path: ${{ env.WORKING_DIR }}/tfplan
+          retention-days: 1
+
+  terraform-apply:
+    name: Terraform Apply (${{ needs.set-environment.outputs.environment }})
+    runs-on: ubuntu-latest
+    needs: [set-environment, terraform-plan]
+    environment: ${{ needs.set-environment.outputs.environment }}
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        run: |
+          terraform init \
+            -backend-config="bucket=ecommerce-devopsify-terraform-state" \
+            -backend-config="key=ecommerce/${{ needs.set-environment.outputs.environment }}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}"
+
+      - name: Download Plan
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ needs.set-environment.outputs.environment }}
+          path: ${{ env.WORKING_DIR }}
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+
+      - name: Get Outputs
+        run: terraform output
+
+      - name: Save EKS cluster name
+        id: eks
+        run: |
+          echo "cluster_name=$(terraform output -raw eks_cluster_name)" >> $GITHUB_OUTPUT
+          echo "environment=${{ needs.set-environment.outputs.environment }}" >> $GITHUB_OUTPUT
+          echo "aws_region=${{ env.AWS_REGION }}" >> $GITHUB_OUTPUT
+
+    outputs:
+      cluster_name: ${{ steps.eks.outputs.cluster_name }}
+      environment: ${{ steps.eks.outputs.environment }}
+      aws_region: ${{ steps.eks.outputs.aws_region }}
