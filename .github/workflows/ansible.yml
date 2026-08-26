@@ -145,9 +145,17 @@ jobs:
             -v
 
       # Cleanup Vault Password 
-      - name: Cleanup vault password file
-        if: always()
-        run: rm -f /tmp/.vault_pass
+      - name: Create vault files
+        run: |
+          # Create vault password file
+          echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > /tmp/.vault_pass
+          chmod 600 /tmp/.vault_pass
+
+          # Create vault.yml dynamically from GitHub Secrets
+          cat > ${{ env.ANSIBLE_DIR }}/group_vars/vault.yml << EOF
+          vault_postgres_password: "${{ secrets.POSTGRES_PASSWORD }}"
+          EOF
+          chmod 600 ${{ env.ANSIBLE_DIR }}/group_vars/vault.yml
 
       # Get ALB DNS 
       - name: Get ALB DNS
