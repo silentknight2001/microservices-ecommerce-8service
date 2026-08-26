@@ -80,11 +80,11 @@ jobs:
     environment: ${{ needs.set-environment.outputs.environment }}
 
     steps:
-      # Checkout 
+      # ─── Checkout ──────────────────────────────────────
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # AWS Credentials 
+      # ─── AWS Credentials ───────────────────────────────
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -92,7 +92,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # Install Tools 
+      # ─── Install Tools ─────────────────────────────────
       - name: Install kubectl
         uses: azure/setup-kubectl@v3
         with:
@@ -115,7 +115,7 @@ jobs:
           chmod +x /usr/local/bin/argocd
           argocd version --client
 
-      # Update kubeconfig 
+      # ─── Update kubeconfig ─────────────────────────────
       - name: Update kubeconfig
         run: |
           ENV=${{ needs.set-environment.outputs.environment }}
@@ -125,26 +125,7 @@ jobs:
             --name $CLUSTER_NAME
           kubectl cluster-info
 
-      # Create Vault Password File 
-      - name: Create vault password file
-        run: |
-          echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > /tmp/.vault_pass
-          chmod 600 /tmp/.vault_pass
-
-      # Run Ansible Playbook 
-      - name: Run Ansible playbook
-        working-directory: ${{ env.ANSIBLE_DIR }}
-        env:
-          ANSIBLE_HOST_KEY_CHECKING: "False"
-        #   ANSIBLE_STDOUT_CALLBACK: "yaml"
-        run: |
-          ansible-playbook playbooks/setup-eks.yml \
-            --vault-password-file /tmp/.vault_pass \
-            -e "cluster_name=ecommerce-eks-${{ needs.set-environment.outputs.environment }}" \
-            -e "environment=${{ needs.set-environment.outputs.environment }}" \
-            -v
-
-      # Cleanup Vault Password 
+      # ─── Create Vault Files ────────────────────────────
       - name: Create vault files
         run: |
           # Create vault password file
@@ -157,7 +138,26 @@ jobs:
           EOF
           chmod 600 ${{ env.ANSIBLE_DIR }}/group_vars/vault.yml
 
-      # Get ALB DNS 
+      # ─── Run Ansible Playbook ──────────────────────────
+      - name: Run Ansible playbook
+        working-directory: ${{ env.ANSIBLE_DIR }}
+        env:
+          ANSIBLE_HOST_KEY_CHECKING: "False"
+        run: |
+          ansible-playbook playbooks/setup-eks.yml \
+            --vault-password-file /tmp/.vault_pass \
+            -e "cluster_name=ecommerce-eks-${{ needs.set-environment.outputs.environment }}" \
+            -e "environment=${{ needs.set-environment.outputs.environment }}" \
+            -v
+
+      # ─── Cleanup Vault Files ───────────────────────────
+      - name: Cleanup vault files
+        if: always()
+        run: |
+          rm -f /tmp/.vault_pass
+          rm -f ${{ env.ANSIBLE_DIR }}/group_vars/vault.yml
+
+      # ─── Get ALB DNS ───────────────────────────────────
       - name: Get ALB DNS
         id: alb
         run: |
@@ -168,7 +168,7 @@ jobs:
           echo "ALB DNS: $ALB_DNS"
           echo "alb_dns=$ALB_DNS" >> $GITHUB_OUTPUT
 
-      # Health Check 
+      # ─── Health Check ──────────────────────────────────
       - name: Health check application
         run: |
           ALB_DNS="${{ steps.alb.outputs.alb_dns }}"
@@ -179,7 +179,7 @@ jobs:
             echo "ALB DNS not assigned yet"
           fi
 
-      #  Deployment Summary 
+      # ─── Deployment Summary ────────────────────────────
       - name: Print deployment summary
         if: always()
         run: |
