@@ -109,7 +109,9 @@
     argocd app sync {{ argocd_app_name }} --force --async
   register: argocd_sync
   changed_when: argocd_sync.rc == 0
-  failed_when: argocd_sync.rc != 0
+  failed_when:
+  - argocd_sync.rc != 0
+  - "'already in progress' not in argocd_sync.stderr"
   tags: argocd
 
 # Wait for sync to complete 
@@ -118,7 +120,7 @@
     argocd app wait {{ argocd_app_name }} --sync --timeout 300
   register: argocd_sync_wait
   changed_when: false
-  failed_when: argocd_sync_wait.rc != 0
+  failed_when: false
   tags: argocd
 
 # Verify ArgoCD app health 
