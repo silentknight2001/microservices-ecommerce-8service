@@ -68,8 +68,8 @@ resource "aws_launch_template" "eks_nodes" {
 
   metadata_options {
     http_endpoint               = "enabled"
-    http_tokens                 = "optional"
-    http_put_response_hop_limit = 2  
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 1
   }
 
   tag_specifications {
@@ -104,46 +104,61 @@ resource "aws_iam_openid_connect_provider" "eks" {
 }
 
 #  EBS CSI Driver Addon ......... 
+# EBS CSI IAM Role (Pod Identity) ... 
 
-# resource "aws_iam_role" "ebs_csi" {
-#   name = "${var.cluster_name}-ebs-csi-role"
+resource "aws_iam_role" "ebs_csi" {
+  name = "${var.cluster_name}-ebs-csi-role"
 
-#   assume_role_policy = jsonencode({
-#     Version = "2012-10-17"
-#     Statement = [{
-#       Effect = "Allow"
-#       Principal = {
-#         Federated = aws_iam_openid_connect_provider.eks.arn
-#       }
-#       Action = "sts:AssumeRoleWithWebIdentity"
-#       Condition = {
-#         StringEquals = {
-#           "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud" = "sts.amazonaws.com"
-#           "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub" = "system:serviceaccount:kube-system:ebs-csi-controller-sa"
-#         }
-#       }
-#     }]
-#   })
-# }
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "pods.eks.amazonaws.com" }
+      Action    = [
+        "sts:AssumeRole",
+        "sts:TagSession"
+      ]
+    }]
+  })
+}
 
-# resource "aws_iam_role_policy_attachment" "ebs_csi" {
-#   role       = aws_iam_role.ebs_csi.name
-#   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
-# }
+resource "aws_iam_role_policy_attachment" "ebs_csi" {
+  role       = aws_iam_role.ebs_csi.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy"
+}
 
 resource "aws_eks_addon" "ebs_csi" {
-  cluster_name             = aws_eks_cluster.main.name
-  addon_name               = "aws-ebs-csi-driver"
-  # service_account_role_arn = aws_iam_role.ebs_csi.arn
+  cluster_name                = aws_eks_cluster.main.name
+  addon_name                  = "aws-ebs-csi-driver"
   resolve_conflicts_on_create = "OVERWRITE"
+  # NO service_account_role_arn ← Pod Identity handles this
 
-   timeouts {
-    create = "30m"  
+  timeouts {
+    create = "30m"
   }
 
   depends_on = [
     aws_eks_node_group.main,
+    aws_eks_addon.pod_identity,
+    aws_eks_pod_identity_association.ebs_csi
   ]
+}
+
+resource "aws_eks_addon" "pod_identity" {
+  cluster_name                = aws_eks_cluster.main.name
+  addon_name                  = "eks-pod-identity-agent"
+  resolve_conflicts_on_create = "OVERWRITE"
+
+  depends_on = [aws_eks_node_group.main]
+}
+
+resource "aws_eks_pod_identity_association" "ebs_csi" {
+  cluster_name    = aws_eks_cluster.main.name
+  namespace       = "kube-system"
+  service_account = "ebs-csi-controller-sa"
+  role_arn        = aws_iam_role.ebs_csi.arn
+
+  depends_on = [aws_eks_addon.pod_identity]
 }
 
 
