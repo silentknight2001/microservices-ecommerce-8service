@@ -144,9 +144,9 @@ resource "aws_eks_addon" "ebs_csi" {
   ]
 }
 
-# modules/eks/main.tf — add to node role
+# modules/eks/main.tf
 resource "aws_iam_role_policy_attachment" "cloudwatch" {
-  role       = aws_iam_role.eks_node_group.name
+  role       = split("/", var.eks_node_group_role_arn)[1]
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 }
 
