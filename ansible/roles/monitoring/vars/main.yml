@@ -1,0 +1,52 @@
+monitoring_namespace: "monitoring"
+cloudwatch_namespace: "amazon-cloudwatch"
+
+# Helm Chart Versions for production
+kube_prometheus_stack_version: "58.2.2"
+cloudwatch_agent_version: "0.0.9"
+
+# Helm Repos 
+prometheus_helm_repo: "https://prometheus-community.github.io/helm-charts"
+cloudwatch_helm_repo: "https://aws.github.io/eks-charts"
+
+grafana_service_type: "ClusterIP"
+grafana_port: 3000
+
+prometheus_retention: "15d"
+prometheus_storage_size: "10Gi"
+prometheus_storage_class: "gp2-csi"
+
+alertmanager_storage_size: "2Gi"
+alertmanager_storage_class: "gp2-csi"
+alertmanager_smtp_host: "smtp.gmail.com:587"
+alertmanager_smtp_require_tls: true
+
+alert_cpu_threshold: "80"
+alert_memory_threshold: "80"
+alert_disk_threshold: "80"
+alert_pod_restart_threshold: "5"
+alert_pvc_threshold: "80"
+
+cloudwatch_log_retention_days: 30
+cloudwatch_log_group_prefix: "/eks/ecommerce"
+
+# Grafana Dashboard IDs (auto-import) 
+grafana_dashboards:
+- id: "15760"
+  name: "Kubernetes Cluster Overview"
+  revision: "1"
+- id: "13770"
+  name: "Kubernetes All-in-One"
+  revision: "1"
+- id: "1860"
+  name: "Node Exporter Full"
+  revision: "1"
+- id: "6417"
+  name: "Kubernetes Pod Details"
+  revision: "1"
+- id: "7249"
+  name: "Kubernetes Deployments"
+  revision: "1"
+- id: "12900"
+  name: "Spring Boot JVM"
+  revision: "1"
