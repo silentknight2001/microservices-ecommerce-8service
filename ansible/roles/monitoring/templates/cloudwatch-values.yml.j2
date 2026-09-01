@@ -1,0 +1,200 @@
+#  CloudWatch Agent 
+cloudwatch-agent:
+  enabled: true
+
+  # Cluster Config 
+  clusterName: "{{ cluster_name }}"
+  region: "{{ aws_region }}"
+
+  # Agent Config 
+  config: |
+    {
+      "agent": {
+        "region": "{{ aws_region }}",
+        "debug": false
+      },
+      "logs": {
+        "metrics_collected": {
+          "kubernetes": {
+            "cluster_name": "{{ cluster_name }}",
+            "metrics_collection_interval": 60,
+            "enhanced_container_insights": true
+          }
+        },
+        "log_stream_name": "{instance_id}",
+        "force_flush_interval": 5
+      },
+      "metrics": {
+        "metrics_collected": {
+          "kubernetes": {
+            "cluster_name": "{{ cluster_name }}",
+            "metrics_collection_interval": 60
+          }
+        },
+        "append_dimensions": {
+          "ClusterName": "{{ cluster_name }}",
+          "Environment": "{{ environment }}"
+        },
+        "aggregation_dimensions": [
+          ["ClusterName"],
+          ["ClusterName", "Namespace"],
+          ["ClusterName", "Namespace", "PodName"]
+        ]
+      }
+    }
+
+  # Resource Limits 
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
+
+  #  Security Context 
+  securityContext:
+    runAsNonRoot: false    # needs root for node metrics
+    privileged: false
+    readOnlyRootFilesystem: false
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+      add:
+        - SYS_PTRACE    # needed for process metrics
+
+  # Tolerations (run on all nodes) 
+  tolerations:
+    - operator: Exists
+      effect: NoSchedule
+    - operator: Exists
+      effect: NoExecute
+
+  # Volume Mounts 
+  volumeMounts:
+    - name: cwagentconfig
+      mountPath: /etc/cwagentconfig
+    - name: rootfs
+      mountPath: /rootfs
+      readOnly: true
+    - name: sys
+      mountPath: /sys
+      readOnly: true
+    - name: devdisk
+      mountPath: /dev/disk
+      readOnly: true
+
+  volumes:
+    - name: cwagentconfig       
+      configMap:
+        name: cwagentconfig      # Helm creates this ConfigMap
+    - name: rootfs
+      hostPath:
+        path: /
+    - name: sys
+      hostPath:
+        path: /sys
+    - name: devdisk
+      hostPath:
+        path: /dev/disk
+
+#  Fluent Bit (log collector) 
+fluent-bit:
+  enabled: true
+
+  # Cluster Config 
+  clusterName: "{{ cluster_name }}"
+  region: "{{ aws_region }}"
+
+  # Log Groups 
+  # Each stream goes to separate log group
+  logGroupName: "{{ cloudwatch_log_group_prefix }}"
+
+  # Fluent Bit Config 
+  input:
+    enabled: true
+    tag: "application.*"
+    path: "/var/log/containers/*.log"
+    # Exclude system/monitoring namespaces
+    exclude_path: >-
+      /var/log/containers/*kube-system*,
+      /var/log/containers/*monitoring*,
+      /var/log/containers/*amazon-cloudwatch*,
+      /var/log/containers/*argocd*
+
+  filters:
+    - name: kubernetes
+      match: "application.*"
+      kube_url: "https://kubernetes.default.svc:443"  # api server address
+      merge_log: "On"
+      keep_log: "Off"
+      k8s_logging_parser: "On"
+      k8s_logging_exclude: "On"
+      annotations: "Off"    # don't collect annotations (reduces data)
+      labels: "On"
+
+    # Add environment tag
+    - name: record_modifier
+      match: "application.*"
+      records:
+        - environment "{{ environment }}"
+        - cluster "{{ cluster_name }}"
+
+  output:
+    - name: cloudwatch_logs
+      match: "application.*"
+      region: "{{ aws_region }}"
+      log_group_name: "{{ cloudwatch_log_group_prefix }}/application"
+      log_stream_prefix: "pod-"
+      auto_create_group: "true"
+      log_retention_days: {{ cloudwatch_log_retention_days }}
+      extra_user_agent: "container-insights"
+
+  # Resource Limits 
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
+
+  # Security 
+  securityContext:
+    runAsNonRoot: false    # needs host log access
+    privileged: false
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop:
+        - ALL
+
+  # Tolerations (run on ALL nodes) 
+  tolerations:
+    - operator: Exists
+      effect: NoSchedule
+    - operator: Exists
+      effect: NoExecute
+
+  # Volume Mounts 
+  volumeMounts:
+    - name: varlog
+      mountPath: /var/log
+      readOnly: true
+    - name: varlibdockercontainers
+      mountPath: /var/lib/docker/containers
+      readOnly: true
+    - name: fluentbitstate
+      mountPath: /var/fluent-bit/state
+
+  volumes:
+    - name: varlog
+      hostPath:
+        path: /var/log
+    - name: varlibdockercontainers
+      hostPath:
+        path: /var/lib/docker/containers
+    - name: fluentbitstate
+      hostPath:
+        path: /var/fluent-bit/state
