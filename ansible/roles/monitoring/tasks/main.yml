@@ -1,0 +1,267 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ecommerce-alert-rules
+  namespace: monitoring
+  labels:
+    app: kube-prometheus-stack
+    release: prometheus
+spec:
+  groups:
+
+  # Pod Alerts 
+  - name: pod.rules
+    interval: 30s
+    rules:
+
+    - alert: PodCrashLoopBackOff
+      expr: |
+        max_over_time(
+          kube_pod_container_status_waiting_reason{
+            reason="CrashLoopBackOff",
+            namespace="ecommerce"
+          }[5m]
+        ) == 1
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Pod {{ $labels.pod }} is in CrashLoopBackOff"
+        description: >-
+          Container {{ $labels.container }} in pod {{ $labels.pod }} namespace {{ $labels.namespace }} has been crashing for 2+ minutes.
+
+    - alert: PodOOMKilled
+      expr: |
+        kube_pod_container_status_last_terminated_reason{
+          reason="OOMKilled",
+          namespace="ecommerce"
+        } == 1
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Pod {{ $labels.pod }} was OOMKilled"
+        description: >-
+          Container {{ $labels.container }} in pod {{ $labels.pod }} was killed due to out of memory. Increase memory limits.
+
+    - alert: PodHighRestartCount
+      expr: |
+        increase(
+          kube_pod_container_status_restarts_total{
+            namespace="ecommerce"
+          }[1h]
+        ) > 5
+      for: 1m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Pod {{ $labels.pod }} restarted {{ $value | printf \"%.0f\" }} times"
+        description: >-
+          Container {{ $labels.container }} in pod {{ $labels.pod }} restarted {{ $value | printf "%.0f" }} times in the last hour.
+
+    - alert: PodPending
+      expr: |
+        kube_pod_status_phase{
+          phase="Pending",
+          namespace="ecommerce"
+        } == 1
+      for: 10m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Pod {{ $labels.pod }} stuck in Pending"
+        description: >-
+          Pod {{ $labels.pod }} has been Pending for 10+ minutes. Check node resources or PVC binding.
+
+  # Node Alerts 
+  - name: node.rules
+    interval: 30s
+    rules:
+
+    - alert: NodeNotReady
+      expr: |
+        kube_node_status_condition{
+          condition="Ready",
+          status="true"
+        } == 0
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Node {{ $labels.node }} is NotReady"
+        description: >-
+          Node {{ $labels.node }} has been in NotReady state for 2+ minutes.
+
+    - alert: NodeHighCPU
+      expr: |
+        100 - (
+          avg by (instance) (
+            rate(node_cpu_seconds_total{mode="idle"}[5m])
+          ) * 100
+        ) > 80
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Node {{ $labels.instance }} CPU at {{ $value | printf \"%.1f\" }}%"
+        description: >-
+          Node {{ $labels.instance }} CPU usage exceeded 80% for 5+ minutes.
+
+    - alert: NodeHighMemory
+      expr: |
+        (
+          1 - (
+            node_memory_MemAvailable_bytes /
+            node_memory_MemTotal_bytes
+          )
+        ) * 100 > 80
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Node {{ $labels.instance }} memory at {{ $value | printf \"%.1f\" }}%"
+        description: >-
+          Node {{ $labels.instance }} memory usage exceeded 80% for 5+ minutes.
+
+    - alert: NodeDiskPressure
+      expr: |
+        (
+          node_filesystem_avail_bytes{
+            mountpoint="/",
+            fstype!="tmpfs"
+          } /
+          node_filesystem_size_bytes{
+            mountpoint="/",
+            fstype!="tmpfs"
+          }
+        ) * 100 < 20
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "Node {{ $labels.instance }} disk at {{ $value | printf \"%.1f\" }}% free"
+        description: >-
+          Node {{ $labels.instance }} has less than 20% disk space remaining.
+
+  # Storage Alerts 
+  - name: storage.rules
+    interval: 30s
+    rules:
+
+    - alert: PVCUsageCritical
+      expr: |
+        (
+          kubelet_volume_stats_used_bytes /
+          kubelet_volume_stats_capacity_bytes
+        ) * 100 > 90
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "PVC {{ $labels.persistentvolumeclaim }} is 90%+ full"
+        description: >-
+          PVC {{ $labels.persistentvolumeclaim }} in namespace {{ $labels.namespace }} is {{ $value | printf "%.1f" }}% full. Expand immediately!
+
+    - alert: PVCPending
+      expr: |
+        kube_persistentvolumeclaim_status_phase{
+          phase="Pending",
+          namespace="ecommerce"
+        } == 1
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "PVC {{ $labels.persistentvolumeclaim }} is Pending"
+        description: >-
+          PVC {{ $labels.persistentvolumeclaim }} has been Pending for 5+ minutes. Check StorageClass and EBS CSI driver.
+
+  # Spring Boot JVM Alerts 
+  - name: jvm.rules
+    interval: 30s
+    rules:
+
+    - alert: JVMHeapUsageCritical
+      expr: |
+        sum by (namespace, pod) (
+          jvm_memory_used_bytes{area="heap"}
+        ) /
+        sum by (namespace, pod) (
+          jvm_memory_max_bytes{area="heap"}
+        ) * 100 > 90
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "JVM heap critical in {{ $labels.pod }}"
+        description: >-
+          Pod {{ $labels.pod }} JVM heap is {{ $value | printf "%.1f" }}%. OOMKill risk is high. Increase memory limits.
+
+    - alert: JVMGCTimeTooHigh
+      expr: |
+        sum by (namespace, pod) (
+          rate(jvm_gc_pause_seconds_sum[5m])
+        ) /
+        sum by (namespace, pod) (
+          rate(jvm_gc_pause_seconds_count[5m])
+        ) > 0.1
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        summary: "High GC pause in {{ $labels.pod }}"
+        description: >-
+          Pod {{ $labels.pod }} average GC pause is {{ $value | printf "%.3f" }}s. Application latency impacted.
+
+  # Kafka / Saga Alerts 
+  - name: kafka.rules
+    interval: 30s
+    rules:
+
+    - alert: KafkaPodDown
+      expr: |
+        kube_pod_status_phase{
+          pod=~"kafka-.*",
+          namespace="ecommerce",
+          phase!="Running"
+        } == 1
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Kafka pod {{ $labels.pod }} is down"
+        description: >-
+          Kafka is down — all Saga events will fail until Kafka is restored.
+
+    - alert: ZookeeperPodDown
+      expr: |
+        kube_pod_status_phase{
+          pod=~"zookeeper-.*",
+          namespace="ecommerce",
+          phase!="Running"
+        } == 1
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Zookeeper pod {{ $labels.pod }} is down"
+        description: >-
+          Zookeeper is down — Kafka depends on it. All Saga events will fail.
+
+  # Deployment Alerts 
+  - name: deployment.rules
+    interval: 30s
+    rules:
+
+    - alert: DeploymentNotAvailable
+      expr: |
+        kube_deployment_status_available_replicas{
+          namespace="ecommerce"
+        } == 0
+      for: 2m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Deployment {{ $labels.deployment }} has 0 replicas"
+        description: >-
+          Deployment {{ $labels.deployment }} in namespace {{ $labels.namespace }} has no available replicas. Service is completely down!
