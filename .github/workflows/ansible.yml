@@ -80,11 +80,9 @@ jobs:
     environment: ${{ needs.set-environment.outputs.environment }}
 
     steps:
-      # ─── Checkout ──────────────────────────────────────
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ─── AWS Credentials ───────────────────────────────
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -92,7 +90,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      # ─── Install Tools ─────────────────────────────────
       - name: Install kubectl
         uses: azure/setup-kubectl@v3
         with:
@@ -115,7 +112,6 @@ jobs:
           chmod +x /usr/local/bin/argocd
           argocd version --client
 
-      # ─── Update kubeconfig ─────────────────────────────
       - name: Update kubeconfig
         run: |
           ENV=${{ needs.set-environment.outputs.environment }}
@@ -125,20 +121,21 @@ jobs:
             --name $CLUSTER_NAME
           kubectl cluster-info
 
-      # ─── Create Vault Files ────────────────────────────
       - name: Create vault files
         run: |
           # Create vault password file
           echo "${{ secrets.ANSIBLE_VAULT_PASSWORD }}" > /tmp/.vault_pass
           chmod 600 /tmp/.vault_pass
-
           # Create vault.yml dynamically from GitHub Secrets
           cat > ${{ env.ANSIBLE_DIR }}/group_vars/vault.yml << EOF
           vault_postgres_password: "${{ secrets.POSTGRES_PASSWORD }}"
+          vault_grafana_admin_password: "${{ secrets.GRAFANA_PASSWORD }}"
+          vault_alert_email_from: "${{ secrets.ALERT_EMAIL_FROM }}"
+          vault_alert_email_password: "${{ secrets.ALERT_EMAIL_PASSWORD }}"
+          vault_alert_email_to: "${{ secrets.ALERT_EMAIL_TO }}"
           EOF
           chmod 600 ${{ env.ANSIBLE_DIR }}/group_vars/vault.yml
 
-      # ─── Run Ansible Playbook ──────────────────────────
       - name: Run Ansible playbook
         working-directory: ${{ env.ANSIBLE_DIR }}
         env:
@@ -150,14 +147,12 @@ jobs:
             -e "environment=${{ needs.set-environment.outputs.environment }}" \
             -v
 
-      # ─── Cleanup Vault Files ───────────────────────────
       - name: Cleanup vault files
         if: always()
         run: |
           rm -f /tmp/.vault_pass
           rm -f ${{ env.ANSIBLE_DIR }}/group_vars/vault.yml
 
-      # ─── Get ALB DNS ───────────────────────────────────
       - name: Get ALB DNS
         id: alb
         run: |
@@ -168,7 +163,6 @@ jobs:
           echo "ALB DNS: $ALB_DNS"
           echo "alb_dns=$ALB_DNS" >> $GITHUB_OUTPUT
 
-      # ─── Health Check ──────────────────────────────────
       - name: Health check application
         run: |
           ALB_DNS="${{ steps.alb.outputs.alb_dns }}"
@@ -179,7 +173,6 @@ jobs:
             echo "ALB DNS not assigned yet"
           fi
 
-      # ─── Deployment Summary ────────────────────────────
       - name: Print deployment summary
         if: always()
         run: |
