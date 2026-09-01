@@ -1,0 +1,263 @@
+#  Global 
+fullnameOverride: "prometheus"
+
+# Grafana 
+grafana:
+  enabled: true
+  fullnameOverride: "grafana"
+
+  # Admin credentials from vault (encrypted)
+  adminUser: "admin"
+  adminPassword: "{{ vault_grafana_admin_password }}"
+
+  service:
+    type: "{{ grafana_service_type }}"
+    port: {{ grafana_port }}
+
+  # Persistent storage
+  persistence:
+    enabled: true
+    storageClassName: "{{ prometheus_storage_class }}"
+    size: "5Gi"
+    accessModes:
+      - ReadWriteOnce
+
+  # Auto-import community dashboards
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: "default"
+          orgId: 1
+          folder: "Kubernetes"
+          type: file
+          disableDeletion: true
+          editable: false
+          options:
+            path: /var/lib/grafana/dashboards/default
+        - name: "jvm"
+          orgId: 1
+          folder: "Spring Boot"
+          type: file
+          disableDeletion: true
+          editable: false
+          options:
+            path: /var/lib/grafana/dashboards/jvm
+
+  # Download dashboards from grafana.com
+  dashboards:
+    default:
+{% for dashboard in grafana_dashboards %}
+{% if dashboard.name != 'Spring Boot JVM' %}
+      {{ dashboard.name | lower | replace(' ', '-') }}:
+        gnetId: {{ dashboard.id }}
+        revision: {{ dashboard.revision }}
+        datasource: Prometheus
+{% endif %}
+{% endfor %}
+    jvm:
+      spring-boot-jvm:
+        gnetId: "12900"
+        revision: "1"
+        datasource: Prometheus
+
+  # Grafana configuration
+  grafana.ini:
+    server:
+      root_url: "http://localhost:{{ grafana_port }}"
+    security:
+      allow_embedding: false
+      cookie_secure: true
+      strict_transport_security: true
+      content_security_policy: true
+    users:
+      allow_sign_up: false
+      allow_org_create: false
+      auto_assign_org: true
+      auto_assign_org_role: Viewer
+    auth.anonymous:
+      enabled: false
+    log:
+      mode: console
+      level: warn
+
+  # Resource limits
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  # Sidecar for dashboard auto-discovery
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+    datasources:
+      enabled: true
+
+# Prometheus 
+prometheus:
+  enabled: true
+
+  prometheusSpec:
+    # Retention
+    retention: "{{ prometheus_retention }}"
+    retentionSize: "9GB"
+
+    # Storage
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "{{ prometheus_storage_class }}"
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: "{{ prometheus_storage_size }}"
+
+    # Scrape configs - collect from all namespaces
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+
+    # Resource limits
+    resources:
+      requests:
+        cpu: "200m"
+        memory: "512Mi"
+      limits:
+        cpu: "1000m"
+        memory: "2Gi"
+
+    # Security context
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65534
+      fsGroup: 65534
+
+    # Additional scrape configs for Spring Boot JVM
+    additionalScrapeConfigs:
+      - job_name: "spring-boot-services"
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - "{{ k8s_namespace }}"
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+
+# AlertManager 
+alertmanager:
+  enabled: true
+
+  alertmanagerSpec:
+    # Storage
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: "{{ alertmanager_storage_class }}"
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: "{{ alertmanager_storage_size }}"
+
+    # Resource limits
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "128Mi"
+      limits:
+        cpu: "200m"
+        memory: "256Mi"
+
+    # Security context
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 65534
+      fsGroup: 65534
+
+# Node Exporter 
+nodeExporter:
+  enabled: true    # collects node CPU, memory, disk, network
+
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "200m"
+      memory: "128Mi"
+
+# Kube State Metrics 
+kubeStateMetrics:
+  enabled: true    # collects pod count, deployment status, restart count
+
+# Kube API Metrics 
+kubeApiServer:
+  enabled: true
+
+kubeControllerManager:
+  enabled: false    # managed by AWS, not accessible
+
+kubeScheduler:
+  enabled: false    # managed by AWS, not accessible
+
+kubeEtcd:
+  enabled: false    # managed by AWS, not accessible
+
+kubelet:
+  enabled: true
+  serviceMonitor:
+    cAdvisor: true    # container-level metrics
+
+# Default Rules 
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: false        # managed by AWS
+    configReloaders: true
+    general: true
+    k8s: true
+    kubeApiserverAvailability: true
+    kubeApiserverBurnrate: true
+    kubeApiserverHistogram: true
+    kubeApiserverSlos: true
+    kubeControllerManager: false  # managed by AWS
+    kubelet: true
+    kubeProxy: false
+    kubePrometheusGeneral: true
+    kubePrometheusNodeRecording: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    kubeSchedulerAlerting: false  # managed by AWS
+    kubeSchedulerRecording: false # managed by AWS
+    kubeStateMetrics: true
+    network: true
+    node: true
+    nodeExporterAlerting: true
+    nodeExporterRecording: true
+    prometheus: true
+    prometheusOperator: true
