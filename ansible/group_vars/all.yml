@@ -34,3 +34,6 @@ alb_controller_chart_repo: "https://aws.github.io/eks-charts"
 alb_controller_chart_name: "aws-load-balancer-controller"
 
 postgres_password: "{{ vault_postgres_password }}"
+# Add monitoring reference
+monitoring_namespace: "monitoring"
+cloudwatch_namespace: "amazon-cloudwatch"
