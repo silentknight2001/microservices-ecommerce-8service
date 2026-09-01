@@ -46,6 +46,9 @@
   - role: argocd
     tags: argocd
 
+  - role: monitoring
+    tags: monitoring
+
   post_tasks:
   - name: Final verification
     block:
