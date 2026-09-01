@@ -1,267 +1,210 @@
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: ecommerce-alert-rules
-  namespace: monitoring
-  labels:
-    app: kube-prometheus-stack
-    release: prometheus
-spec:
-  groups:
+# ansible/roles/monitoring/tasks/main.yml
+---
+# ─── Step 1: Create Monitoring Namespace ───────────────
+- name: Create monitoring namespace
+  command: kubectl create namespace {{ monitoring_namespace }}
+  register: monitoring_ns
+  failed_when:
+  - monitoring_ns.rc != 0
+  - "'already exists' not in monitoring_ns.stderr"
+  changed_when: monitoring_ns.rc == 0
+  tags: monitoring
 
-  # Pod Alerts 
-  - name: pod.rules
-    interval: 30s
-    rules:
+- name: Create CloudWatch namespace
+  command: kubectl create namespace {{ cloudwatch_namespace }}
+  register: cloudwatch_ns
+  failed_when:
+  - cloudwatch_ns.rc != 0
+  - "'already exists' not in cloudwatch_ns.stderr"
+  changed_when: cloudwatch_ns.rc == 0
+  tags: monitoring
 
-    - alert: PodCrashLoopBackOff
-      expr: |
-        max_over_time(
-          kube_pod_container_status_waiting_reason{
-            reason="CrashLoopBackOff",
-            namespace="ecommerce"
-          }[5m]
-        ) == 1
-      for: 2m
-      labels:
-        severity: critical
-      annotations:
-        summary: "Pod {{ $labels.pod }} is in CrashLoopBackOff"
-        description: >-
-          Container {{ $labels.container }} in pod {{ $labels.pod }} namespace {{ $labels.namespace }} has been crashing for 2+ minutes.
+# ─── Step 2: Add Helm Repositories ────────────────────
+- name: Add Prometheus Helm repository
+  command: >
+    helm repo add prometheus-community {{ prometheus_helm_repo }}
+  register: prometheus_repo
+  changed_when: "'already exists' not in prometheus_repo.stdout"
+  failed_when:
+  - prometheus_repo.rc != 0
+  - "'already exists' not in prometheus_repo.stdout"
+  tags: monitoring
 
-    - alert: PodOOMKilled
-      expr: |
-        kube_pod_container_status_last_terminated_reason{
-          reason="OOMKilled",
-          namespace="ecommerce"
-        } == 1
-      for: 1m
-      labels:
-        severity: critical
-      annotations:
-        summary: "Pod {{ $labels.pod }} was OOMKilled"
-        description: >-
-          Container {{ $labels.container }} in pod {{ $labels.pod }} was killed due to out of memory. Increase memory limits.
+- name: Add CloudWatch Helm repository
+  command: >
+    helm repo add eks {{ cloudwatch_helm_repo }}
+  register: cloudwatch_repo
+  changed_when: "'already exists' not in cloudwatch_repo.stdout"
+  failed_when:
+  - cloudwatch_repo.rc != 0
+  - "'already exists' not in cloudwatch_repo.stdout"
+  tags: monitoring
 
-    - alert: PodHighRestartCount
-      expr: |
-        increase(
-          kube_pod_container_status_restarts_total{
-            namespace="ecommerce"
-          }[1h]
-        ) > 5
-      for: 1m
-      labels:
-        severity: warning
-      annotations:
-        summary: "Pod {{ $labels.pod }} restarted {{ $value | printf \"%.0f\" }} times"
-        description: >-
-          Container {{ $labels.container }} in pod {{ $labels.pod }} restarted {{ $value | printf "%.0f" }} times in the last hour.
+- name: Update all Helm repositories
+  command: helm repo update
+  changed_when: true
+  tags: monitoring
 
-    - alert: PodPending
-      expr: |
-        kube_pod_status_phase{
-          phase="Pending",
-          namespace="ecommerce"
-        } == 1
-      for: 10m
-      labels:
-        severity: warning
-      annotations:
-        summary: "Pod {{ $labels.pod }} stuck in Pending"
-        description: >-
-          Pod {{ $labels.pod }} has been Pending for 10+ minutes. Check node resources or PVC binding.
+# ─── Step 3: Create Grafana Secret ────────────────────
+- name: Create Grafana admin secret
+  command: >
+    kubectl create secret generic grafana-admin-secret --namespace {{ monitoring_namespace }} --from-literal=admin-user=admin --from-literal=admin-password={{ vault_grafana_admin_password }}
+  register: grafana_secret
+  failed_when:
+  - grafana_secret.rc != 0
+  - "'already exists' not in grafana_secret.stderr"
+  changed_when: grafana_secret.rc == 0
+  no_log: true
+  tags: monitoring
 
-  # Node Alerts 
-  - name: node.rules
-    interval: 30s
-    rules:
+# ─── Step 4: Render AlertManager Config ────────────────
+- name: Render AlertManager config from template
+  template:
+    src: alertmanager-config.yml.j2
+    dest: /tmp/alertmanager-config.yml
+    mode: "0600"
+  no_log: true
+  tags: monitoring
 
-    - alert: NodeNotReady
-      expr: |
-        kube_node_status_condition{
-          condition="Ready",
-          status="true"
-        } == 0
-      for: 2m
-      labels:
-        severity: critical
-      annotations:
-        summary: "Node {{ $labels.node }} is NotReady"
-        description: >-
-          Node {{ $labels.node }} has been in NotReady state for 2+ minutes.
+# ─── Step 5: Render Prometheus Values ──────────────────
+- name: Render Prometheus Helm values from template
+  template:
+    src: prometheus-values.yml.j2
+    dest: /tmp/prometheus-values.yml
+    mode: "0644"
+  tags: monitoring
 
-    - alert: NodeHighCPU
-      expr: |
-        100 - (
-          avg by (instance) (
-            rate(node_cpu_seconds_total{mode="idle"}[5m])
-          ) * 100
-        ) > 80
-      for: 5m
-      labels:
-        severity: warning
-      annotations:
-        summary: "Node {{ $labels.instance }} CPU at {{ $value | printf \"%.1f\" }}%"
-        description: >-
-          Node {{ $labels.instance }} CPU usage exceeded 80% for 5+ minutes.
+# ─── Step 6: Install kube-prometheus-stack ─────────────
+- name: Install kube-prometheus-stack
+  command: >
+    helm upgrade --install prometheus prometheus-community/kube-prometheus-stack --namespace {{ monitoring_namespace }} --values /tmp/prometheus-values.yml --version {{ kube_prometheus_stack_version }} --wait --timeout 10m
+  register: prometheus_install
+  changed_when: prometheus_install.rc == 0
+  failed_when: prometheus_install.rc != 0
+  tags: monitoring
 
-    - alert: NodeHighMemory
-      expr: |
-        (
-          1 - (
-            node_memory_MemAvailable_bytes /
-            node_memory_MemTotal_bytes
-          )
-        ) * 100 > 80
-      for: 5m
-      labels:
-        severity: warning
-      annotations:
-        summary: "Node {{ $labels.instance }} memory at {{ $value | printf \"%.1f\" }}%"
-        description: >-
-          Node {{ $labels.instance }} memory usage exceeded 80% for 5+ minutes.
+- name: Print Prometheus install result
+  debug:
+    msg: "{{ prometheus_install.stdout_lines[-5:] }}"
+  tags: monitoring
 
-    - alert: NodeDiskPressure
-      expr: |
-        (
-          node_filesystem_avail_bytes{
-            mountpoint="/",
-            fstype!="tmpfs"
-          } /
-          node_filesystem_size_bytes{
-            mountpoint="/",
-            fstype!="tmpfs"
-          }
-        ) * 100 < 20
-      for: 5m
-      labels:
-        severity: warning
-      annotations:
-        summary: "Node {{ $labels.instance }} disk at {{ $value | printf \"%.1f\" }}% free"
-        description: >-
-          Node {{ $labels.instance }} has less than 20% disk space remaining.
+# ─── Step 7: Apply AlertManager Config ─────────────────
+- name: Create AlertManager config secret
+  shell: |
+    kubectl create secret generic alertmanager-prometheus-alertmanager \
+      --namespace {{ monitoring_namespace }} \
+      --from-file=alertmanager.yaml=/tmp/alertmanager-config.yml \
+      --dry-run=client -o yaml | kubectl apply -f -
+  register: alertmanager_config
+  changed_when: alertmanager_config.rc == 0
+  no_log: true
+  tags: monitoring
 
-  # Storage Alerts 
-  - name: storage.rules
-    interval: 30s
-    rules:
+# ─── Step 8: Apply Custom Alert Rules ──────────────────
+- name: Apply custom alert rules
+  command: >
+    kubectl apply -f {{ role_path }}/files/alert-rules.yml
+  register: alert_rules
+  changed_when: "'created' in alert_rules.stdout or 'configured' in alert_rules.stdout"
+  failed_when: alert_rules.rc != 0
+  tags: monitoring
 
-    - alert: PVCUsageCritical
-      expr: |
-        (
-          kubelet_volume_stats_used_bytes /
-          kubelet_volume_stats_capacity_bytes
-        ) * 100 > 90
-      for: 2m
-      labels:
-        severity: critical
-      annotations:
-        summary: "PVC {{ $labels.persistentvolumeclaim }} is 90%+ full"
-        description: >-
-          PVC {{ $labels.persistentvolumeclaim }} in namespace {{ $labels.namespace }} is {{ $value | printf "%.1f" }}% full. Expand immediately!
+# ─── Step 9: Cleanup Sensitive Temp Files ──────────────
+- name: Cleanup sensitive rendered files
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+  - /tmp/alertmanager-config.yml
+  no_log: true
+  tags: monitoring
 
-    - alert: PVCPending
-      expr: |
-        kube_persistentvolumeclaim_status_phase{
-          phase="Pending",
-          namespace="ecommerce"
-        } == 1
-      for: 5m
-      labels:
-        severity: warning
-      annotations:
-        summary: "PVC {{ $labels.persistentvolumeclaim }} is Pending"
-        description: >-
-          PVC {{ $labels.persistentvolumeclaim }} has been Pending for 5+ minutes. Check StorageClass and EBS CSI driver.
+# ─── Step 10: Render CloudWatch Values ─────────────────
+- name: Render CloudWatch Helm values from template
+  template:
+    src: cloudwatch-values.yml.j2
+    dest: /tmp/cloudwatch-values.yml
+    mode: "0644"
+  tags: monitoring
 
-  # Spring Boot JVM Alerts 
-  - name: jvm.rules
-    interval: 30s
-    rules:
+# ─── Step 11: Install CloudWatch Container Insights ────
+- name: Install CloudWatch Container Insights
+  command: >
+    helm upgrade --install aws-cloudwatch-metrics eks/aws-cloudwatch-metrics --namespace {{ cloudwatch_namespace }} --values /tmp/cloudwatch-values.yml --version {{ cloudwatch_agent_version }} --wait --timeout 5m
+  register: cloudwatch_install
+  changed_when: cloudwatch_install.rc == 0
+  failed_when: cloudwatch_install.rc != 0
+  tags: monitoring
 
-    - alert: JVMHeapUsageCritical
-      expr: |
-        sum by (namespace, pod) (
-          jvm_memory_used_bytes{area="heap"}
-        ) /
-        sum by (namespace, pod) (
-          jvm_memory_max_bytes{area="heap"}
-        ) * 100 > 90
-      for: 2m
-      labels:
-        severity: critical
-      annotations:
-        summary: "JVM heap critical in {{ $labels.pod }}"
-        description: >-
-          Pod {{ $labels.pod }} JVM heap is {{ $value | printf "%.1f" }}%. OOMKill risk is high. Increase memory limits.
+- name: Print CloudWatch install result
+  debug:
+    msg: "{{ cloudwatch_install.stdout_lines[-3:] }}"
+  tags: monitoring
 
-    - alert: JVMGCTimeTooHigh
-      expr: |
-        sum by (namespace, pod) (
-          rate(jvm_gc_pause_seconds_sum[5m])
-        ) /
-        sum by (namespace, pod) (
-          rate(jvm_gc_pause_seconds_count[5m])
-        ) > 0.1
-      for: 5m
-      labels:
-        severity: warning
-      annotations:
-        summary: "High GC pause in {{ $labels.pod }}"
-        description: >-
-          Pod {{ $labels.pod }} average GC pause is {{ $value | printf "%.3f" }}s. Application latency impacted.
+# ─── Step 12: Cleanup CloudWatch Temp Files ────────────
+- name: Cleanup CloudWatch temp files
+  file:
+    path: /tmp/cloudwatch-values.yml
+    state: absent
+  tags: monitoring
 
-  # Kafka / Saga Alerts 
-  - name: kafka.rules
-    interval: 30s
-    rules:
+# ─── Step 13: Wait for Monitoring Pods ─────────────────
+- name: Wait for Prometheus pods ready
+  command: >
+    kubectl rollout status deployment/prometheus-grafana -n {{ monitoring_namespace }} --timeout=300s
+  register: grafana_status
+  changed_when: false
+  failed_when: grafana_status.rc != 0
+  tags: monitoring
 
-    - alert: KafkaPodDown
-      expr: |
-        kube_pod_status_phase{
-          pod=~"kafka-.*",
-          namespace="ecommerce",
-          phase!="Running"
-        } == 1
-      for: 2m
-      labels:
-        severity: critical
-      annotations:
-        summary: "Kafka pod {{ $labels.pod }} is down"
-        description: >-
-          Kafka is down — all Saga events will fail until Kafka is restored.
+- name: Wait for Prometheus operator ready
+  command: >
+    kubectl rollout status deployment/prometheus-kube-prometheus-operator -n {{ monitoring_namespace }} --timeout=300s
+  register: operator_status
+  changed_when: false
+  failed_when: operator_status.rc != 0
+  tags: monitoring
 
-    - alert: ZookeeperPodDown
-      expr: |
-        kube_pod_status_phase{
-          pod=~"zookeeper-.*",
-          namespace="ecommerce",
-          phase!="Running"
-        } == 1
-      for: 2m
-      labels:
-        severity: critical
-      annotations:
-        summary: "Zookeeper pod {{ $labels.pod }} is down"
-        description: >-
-          Zookeeper is down — Kafka depends on it. All Saga events will fail.
+# ─── Step 14: Verify All Monitoring Pods ───────────────
+- name: Get monitoring pod status
+  command: kubectl get pods -n {{ monitoring_namespace }}
+  register: monitoring_pods
+  changed_when: false
+  tags: monitoring
 
-  # Deployment Alerts 
-  - name: deployment.rules
-    interval: 30s
-    rules:
+- name: Print monitoring pod status
+  debug:
+    msg: "{{ monitoring_pods.stdout_lines }}"
+  tags: monitoring
 
-    - alert: DeploymentNotAvailable
-      expr: |
-        kube_deployment_status_available_replicas{
-          namespace="ecommerce"
-        } == 0
-      for: 2m
-      labels:
-        severity: critical
-      annotations:
-        summary: "Deployment {{ $labels.deployment }} has 0 replicas"
-        description: >-
-          Deployment {{ $labels.deployment }} in namespace {{ $labels.namespace }} has no available replicas. Service is completely down!
+- name: Get CloudWatch pod status
+  command: kubectl get pods -n {{ cloudwatch_namespace }}
+  register: cloudwatch_pods
+  changed_when: false
+  tags: monitoring
+
+- name: Print CloudWatch pod status
+  debug:
+    msg: "{{ cloudwatch_pods.stdout_lines }}"
+  tags: monitoring
+
+# ─── Step 15: Get Grafana Access Info ──────────────────
+- name: Get Grafana service info
+  command: kubectl get svc prometheus-grafana -n {{ monitoring_namespace }}
+  register: grafana_svc
+  changed_when: false
+  tags: monitoring
+
+- name: Print Grafana access instructions
+  debug:
+    msg:
+    - "======================================"
+    - "Grafana Dashboard Access"
+    - "======================================"
+    - "Run this command to access Grafana:"
+    - "kubectl port-forward svc/prometheus-grafana 3000:80 -n {{ monitoring_namespace }}"
+    - "Then open: http://localhost:3000"
+    - "Username: admin"
+    - "Password: (from vault_grafana_admin_password)"
+    - "======================================"
+  tags: monitoring
