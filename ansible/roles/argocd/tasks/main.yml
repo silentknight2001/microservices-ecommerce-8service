@@ -88,11 +88,12 @@
 
 - name: Create ArgoCD application
   command: >
-    argocd app create {{ argocd_app_name }} --repo {{ argocd_repo_url }} --path {{ argocd_repo_path }} --dest-server https://kubernetes.default.svc --dest-namespace {{ k8s_namespace }} --revision {{ argocd_target_revision }} --sync-policy automated --auto-prune --self-heal --directory-recurse
+    argocd app create {{ argocd_app_name }} --repo {{ argocd_repo_url }} --path {{ argocd_repo_path }} --dest-server https://kubernetes.default.svc --dest-namespace {{ k8s_namespace }} --revision {{ argocd_target_revision }} --sync-policy automated --auto-prune --self-heal --directory-recurse --upsert
   register: argocd_app
   failed_when:
   - argocd_app.rc != 0
   - "'already exists' not in argocd_app.stderr"
+  - "'upsert' not in argocd_app.stderr"
   changed_when: argocd_app.rc == 0
   tags: argocd
 
