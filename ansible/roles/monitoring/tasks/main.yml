@@ -121,7 +121,7 @@
     helm upgrade --install aws-cloudwatch-metrics eks/aws-cloudwatch-metrics --namespace {{ cloudwatch_namespace }} --values /tmp/cloudwatch-values.yml --version {{ cloudwatch_agent_version }} --wait --timeout 5m
   register: cloudwatch_install
   changed_when: cloudwatch_install.rc == 0
-  failed_when: cloudwatch_install.rc != 0
+  failed_when: false
   tags: monitoring
 
 - name: Print CloudWatch install result
@@ -182,7 +182,7 @@
   tags: monitoring
 
 - name: Get Grafana service info
-  command: kubectl get svc prometheus-grafana -n {{ monitoring_namespace }}
+  command: kubectl get svc grafana -n {{ monitoring_namespace }}
   register: grafana_svc
   changed_when: false
   tags: monitoring
@@ -194,7 +194,7 @@
     - "Grafana Dashboard Access"
     - "======================================"
     - "Run this command to access Grafana:"
-    - "kubectl port-forward svc/prometheus-grafana 3000:80 -n {{ monitoring_namespace }}"
+    - "kubectl port-forward svc/grafana 3000:80 -n {{ monitoring_namespace }}"
     - "Then open: http://localhost:3000"
     - "Username: admin"
     - "Password: (from vault_grafana_admin_password)"

@@ -3,7 +3,7 @@ cloudwatch_namespace: "amazon-cloudwatch"
 
 # Helm Chart Versions for production
 kube_prometheus_stack_version: "58.2.2"
-cloudwatch_agent_version: "0.0.9"
+cloudwatch_agent_version: "0.0.11"
 
 # Helm Repos 
 prometheus_helm_repo: "https://prometheus-community.github.io/helm-charts"
