@@ -93,7 +93,7 @@ data "aws_eks_cluster_auth" "main" {
 
 resource "aws_iam_openid_connect_provider" "eks" {
 
-    client_id_list = ["sts:amazonaws.com"]
+    client_id_list = ["sts.amazonaws.com"]
     thumbprint_list = [data.tls_certificate.eks.certificates[0].sha1_fingerprint]
     url = aws_eks_cluster.main.identity[0].oidc[0].issuer
 
@@ -140,7 +140,8 @@ resource "aws_eks_addon" "ebs_csi" {
   depends_on = [
     aws_eks_node_group.main,
     aws_eks_addon.pod_identity,
-    aws_eks_pod_identity_association.ebs_csi
+    aws_eks_pod_identity_association.ebs_csi,
+    aws_iam_role_policy_attachment.ebs_csi,
   ]
 }
 
