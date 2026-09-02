@@ -1,22 +1,35 @@
----
-# Delete Ingress (triggers ALB cleanup) 
+# roles/cleanup/tasks/main.yml
+
+- name: Delete ArgoCD application
+  command: >
+    kubectl delete application {{ argocd_app_name }} -n {{ argocd_namespace }} --timeout=30s
+  register: app_delete
+  failed_when:
+  - app_delete.rc != 0
+  - "'not found' not in app_delete.stderr"
+  - "'refused' not in app_delete.stderr"
+  - "'no such host' not in app_delete.stderr"
+  changed_when: app_delete.rc == 0
+  tags: cleanup
+
 - name: Delete ingress resource
   command: >
-    kubectl delete ingress ecommerce-ingress -n {{ k8s_namespace }}
+    kubectl delete ingress ecommerce-ingress -n {{ k8s_namespace }} --timeout=30s
   register: ingress_delete
   failed_when:
   - ingress_delete.rc != 0
   - "'not found' not in ingress_delete.stderr"
+  - "'refused' not in ingress_delete.stderr"
+  - "'no such host' not in ingress_delete.stderr"
+  - "'timed out' not in ingress_delete.stderr"
   changed_when: ingress_delete.rc == 0
   tags: cleanup
 
-# Wait for ALB deletion 
 - name: Wait for ALB to be deleted
   pause:
     seconds: 60
   tags: cleanup
 
-# Delete orphaned security groups 
 - name: Get VPC ID
   command: >
     aws eks describe-cluster --name {{ cluster_name }} --region {{ aws_region }} --query "cluster.resourcesVpcConfig.vpcId" --output text
@@ -45,4 +58,46 @@
 - name: Print cleanup result
   debug:
     msg: "{{ sg_cleanup.stdout_lines }}"
+  tags: cleanup
+
+- name: Find and delete ALB
+  shell: |
+    ALB_ARN=$(aws elbv2 describe-load-balancers \
+      --region {{ aws_region }} \
+      --query 'LoadBalancers[?contains(LoadBalancerName, `k8s-ecommerc`)].LoadBalancerArn' \
+      --output text)
+    if [ ! -z "$ALB_ARN" ]; then
+      echo "Deleting ALB: $ALB_ARN"
+      aws elbv2 delete-load-balancer \
+        --load-balancer-arn $ALB_ARN \
+        --region {{ aws_region }}
+      sleep 30
+    else
+      echo "No ALB found"
+    fi
+  register: alb_delete
+  changed_when: "'Deleting ALB' in alb_delete.stdout"
+  failed_when: false
+  tags: cleanup
+
+- name: Find and delete orphaned ENIs
+  shell: |
+    for eni in $(aws ec2 describe-network-interfaces \
+      --filters "Name=vpc-id,Values={{ vpc_id.stdout }}" \
+      --query 'NetworkInterfaces[?Status==`available` || contains(Description, `ELB`)].[NetworkInterfaceId]' \
+      --output text \
+      --region {{ aws_region }}); do
+      echo "Deleting ENI: $eni"
+      aws ec2 delete-network-interface \
+        --network-interface-id $eni \
+        --region {{ aws_region }} || true
+    done
+  register: eni_delete
+  changed_when: true
+  failed_when: false
+  tags: cleanup
+
+- name: Print ENI cleanup result
+  debug:
+    msg: "{{ eni_delete.stdout_lines }}"
   tags: cleanup

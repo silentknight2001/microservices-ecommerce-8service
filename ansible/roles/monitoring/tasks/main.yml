@@ -1,6 +1,4 @@
-# ansible/roles/monitoring/tasks/main.yml
 ---
-# ─── Step 1: Create Monitoring Namespace ───────────────
 - name: Create monitoring namespace
   command: kubectl create namespace {{ monitoring_namespace }}
   register: monitoring_ns
@@ -19,7 +17,6 @@
   changed_when: cloudwatch_ns.rc == 0
   tags: monitoring
 
-# ─── Step 2: Add Helm Repositories ────────────────────
 - name: Add Prometheus Helm repository
   command: >
     helm repo add prometheus-community {{ prometheus_helm_repo }}
@@ -45,7 +42,6 @@
   changed_when: true
   tags: monitoring
 
-# ─── Step 3: Create Grafana Secret ────────────────────
 - name: Create Grafana admin secret
   command: >
     kubectl create secret generic grafana-admin-secret --namespace {{ monitoring_namespace }} --from-literal=admin-user=admin --from-literal=admin-password={{ vault_grafana_admin_password }}
@@ -57,7 +53,6 @@
   no_log: true
   tags: monitoring
 
-# ─── Step 4: Render AlertManager Config ────────────────
 - name: Render AlertManager config from template
   template:
     src: alertmanager-config.yml.j2
@@ -66,7 +61,6 @@
   no_log: true
   tags: monitoring
 
-# ─── Step 5: Render Prometheus Values ──────────────────
 - name: Render Prometheus Helm values from template
   template:
     src: prometheus-values.yml.j2
@@ -74,7 +68,6 @@
     mode: "0644"
   tags: monitoring
 
-# ─── Step 6: Install kube-prometheus-stack ─────────────
 - name: Install kube-prometheus-stack
   command: >
     helm upgrade --install prometheus prometheus-community/kube-prometheus-stack --namespace {{ monitoring_namespace }} --values /tmp/prometheus-values.yml --version {{ kube_prometheus_stack_version }} --wait --timeout 10m
@@ -88,7 +81,6 @@
     msg: "{{ prometheus_install.stdout_lines[-5:] }}"
   tags: monitoring
 
-# ─── Step 7: Apply AlertManager Config ─────────────────
 - name: Create AlertManager config secret
   shell: |
     kubectl create secret generic alertmanager-prometheus-alertmanager \
@@ -100,7 +92,6 @@
   no_log: true
   tags: monitoring
 
-# ─── Step 8: Apply Custom Alert Rules ──────────────────
 - name: Apply custom alert rules
   command: >
     kubectl apply -f {{ role_path }}/files/alert-rules.yml
@@ -109,7 +100,6 @@
   failed_when: alert_rules.rc != 0
   tags: monitoring
 
-# ─── Step 9: Cleanup Sensitive Temp Files ──────────────
 - name: Cleanup sensitive rendered files
   file:
     path: "{{ item }}"
@@ -119,7 +109,6 @@
   no_log: true
   tags: monitoring
 
-# ─── Step 10: Render CloudWatch Values ─────────────────
 - name: Render CloudWatch Helm values from template
   template:
     src: cloudwatch-values.yml.j2
@@ -127,7 +116,6 @@
     mode: "0644"
   tags: monitoring
 
-# ─── Step 11: Install CloudWatch Container Insights ────
 - name: Install CloudWatch Container Insights
   command: >
     helm upgrade --install aws-cloudwatch-metrics eks/aws-cloudwatch-metrics --namespace {{ cloudwatch_namespace }} --values /tmp/cloudwatch-values.yml --version {{ cloudwatch_agent_version }} --wait --timeout 5m
@@ -141,17 +129,15 @@
     msg: "{{ cloudwatch_install.stdout_lines[-3:] }}"
   tags: monitoring
 
-# ─── Step 12: Cleanup CloudWatch Temp Files ────────────
 - name: Cleanup CloudWatch temp files
   file:
     path: /tmp/cloudwatch-values.yml
     state: absent
   tags: monitoring
 
-# ─── Step 13: Wait for Monitoring Pods ─────────────────
-- name: Wait for Prometheus pods ready
+- name: Wait for Grafana ready
   command: >
-    kubectl rollout status deployment/prometheus-grafana -n {{ monitoring_namespace }} --timeout=300s
+    kubectl rollout status deployment/grafana -n {{ monitoring_namespace }} --timeout=300s
   register: grafana_status
   changed_when: false
   failed_when: grafana_status.rc != 0
@@ -159,13 +145,20 @@
 
 - name: Wait for Prometheus operator ready
   command: >
-    kubectl rollout status deployment/prometheus-kube-prometheus-operator -n {{ monitoring_namespace }} --timeout=300s
+    kubectl rollout status deployment/prometheus-operator -n {{ monitoring_namespace }} --timeout=300s
   register: operator_status
   changed_when: false
   failed_when: operator_status.rc != 0
   tags: monitoring
 
-# ─── Step 14: Verify All Monitoring Pods ───────────────
+- name: Wait for kube-state-metrics ready
+  command: >
+    kubectl rollout status deployment/prometheus-kube-state-metrics -n {{ monitoring_namespace }} --timeout=300s
+  register: ksm_status
+  changed_when: false
+  failed_when: ksm_status.rc != 0
+  tags: monitoring
+
 - name: Get monitoring pod status
   command: kubectl get pods -n {{ monitoring_namespace }}
   register: monitoring_pods
@@ -188,7 +181,6 @@
     msg: "{{ cloudwatch_pods.stdout_lines }}"
   tags: monitoring
 
-# ─── Step 15: Get Grafana Access Info ──────────────────
 - name: Get Grafana service info
   command: kubectl get svc prometheus-grafana -n {{ monitoring_namespace }}
   register: grafana_svc

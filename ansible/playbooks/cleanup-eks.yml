@@ -5,6 +5,13 @@
   vars_files:
   - ../group_vars/all.yml
 
+  pre_tasks:
+  - name: Update kubeconfig before cleanup
+    command: >
+      aws eks update-kubeconfig --region {{ aws_region }} --name {{ cluster_name }}
+    failed_when: false
+    changed_when: false
+
   roles:
   - role: cleanup
     tags: cleanup
