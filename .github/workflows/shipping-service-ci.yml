@@ -20,9 +20,6 @@ env:
   AWS_REGION: ap-south-1
 
 jobs:
- 
-  # JOB 1 — Build, Test & Push Docker Image
-  # ----------------------------------------------
   build-and-push:
     name: Build, Test & Push
     runs-on: ubuntu-latest
@@ -38,15 +35,12 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      # Build common-library first — every service needs this
       - name: Build & install common-library
         run: mvn install -pl common-library -am -DskipTests
 
-      # Build & package shipping-service
       - name: Build shipping-service
         run: mvn package -pl shipping-service -am -DskipTests
 
-      # Login to Docker Hub
       - name: Login to Docker Hub
         if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
@@ -54,10 +48,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Generate Docker tags:
-      # main branch  → latest + sha-xxxxxxx
-      # develop      → develop + sha-xxxxxxx
-      # pull request → only build, no push
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -68,7 +58,6 @@ jobs:
             type=ref,event=branch
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
 
-      # Build & push image to Docker Hub
       - name: Build & push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -80,9 +69,34 @@ jobs:
 
       - name: Print image digest
         run: echo "Image pushed → ${{ env.DOCKER_IMAGE }}:sha-${{ github.sha }}"
+      
+  deploy:
+    name: Update K8s Manifest (GitOps)
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
-  # JOB 2 — Deploy to EKS
-  #---------------------------------
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GIT_OPS_TOKEN }}
+          fetch-depth: 0
+
+      - name: Update image tag in k8s manifest
+        run: |
+          sed -i 's|image: ${{ secrets.DOCKERHUB_USERNAME }}/api-gateway:.*|image: ${{ secrets.DOCKERHUB_USERNAME }}/api-gateway:sha-${{ github.sha }}|' \
+            infrastructure/k8s/api-gateway/Deployment.yml
+
+      - name: Commit & push updated manifest
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add infrastructure/k8s/api-gateway/Deployment.yml
+          git commit -m "ci(api-gateway): update image to sha-${{ github.sha }}"
+          git push
+
+
   # deploy:
   #   name: Deploy to EKS
   #   runs-on: ubuntu-latest
