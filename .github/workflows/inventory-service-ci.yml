@@ -91,7 +91,7 @@ jobs:
       - name: Update image tag in k8s manifest
         run: |
           sed -i 's|image: ${{ secrets.DOCKERHUB_USERNAME }}/inventory-service:.*|image: ${{ secrets.DOCKERHUB_USERNAME }}/inventory-service:sha-${{ github.sha }}|' \
-          infrastructure/k8s/inventory-service/deployment.yml
+          infrastructure/k8s/inventory-service/Deployment.yml
 
       - name: Commit & push updated manifest
         run: |
