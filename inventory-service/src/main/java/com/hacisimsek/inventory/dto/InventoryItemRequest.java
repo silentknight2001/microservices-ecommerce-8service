@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;  
+import lombok.NoArgsConstructor;  // dummy commnet for trigger cd test using argocd 
 
 @Data
 @NoArgsConstructor
