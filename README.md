@@ -1,308 +1,419 @@
-# E-commerce Microservices with Saga Pattern
+# 🚀 Production-Grade 8-Service Microservices Ecommerce Platform on AWS EKS
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
-![Java](https://img.shields.io/badge/Java-17-orange.svg)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.12-green.svg)
-![Last Updated](https://img.shields.io/badge/last%20updated-2025--05--26-brightgreen.svg)
+![Architecture](./docs/architecture.png)
 
-A professional implementation of an e-commerce system using microservice architecture with Saga pattern for distributed transaction management.
-
-*Created by: hacisimsek*  
-*Last Updated: 2025-05-26 18:40:03*
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Microservices](#microservices)
-- [Technologies](#technologies)
-- [Saga Pattern Implementation](#saga-pattern-implementation)
-- [Project Structure](#project-structure)
-- [Setup Instructions](#setup-instructions)
-- [API Documentation](#api-documentation)
-- [Testing](#testing)
-- [Contributing](#contributing)
-
-## Overview
-
-This project implements a robust e-commerce system using a microservices architecture. The system handles order processing, inventory management, payment processing, shipping logistics, and customer notifications while maintaining data consistency across distributed services through the Saga pattern.
-
-## Architecture
-
-The architecture follows the microservices pattern with the following components:
-
-```mermaid
-graph TD
-    Client[Client Applications] --> ApiGateway[API Gateway]
-    ApiGateway --> OrderService[Order Service]
-    ApiGateway --> InventoryService[Inventory Service]
-    ApiGateway --> PaymentService[Payment Service]
-    ApiGateway --> ShippingService[Shipping Service]
-    ApiGateway --> NotificationService[Notification Service]
-    
-    OrderService -- Events --> Kafka[Kafka]
-    InventoryService -- Events --> Kafka
-    PaymentService -- Events --> Kafka
-    ShippingService -- Events --> Kafka
-    NotificationService -- Events --> Kafka
-    
-    Kafka -- Events --> OrderService
-    Kafka -- Events --> InventoryService
-    Kafka -- Events --> PaymentService
-    Kafka -- Events --> ShippingService
-    Kafka -- Events --> NotificationService
-    
-    OrderService --> OrderDB[(PostgreSQL)]
-    InventoryService --> InventoryDB[(MongoDB)]
-    PaymentService --> PaymentDB[(PostgreSQL)]
-    ShippingService --> ShippingDB[(PostgreSQL)]
-    NotificationService --> NotificationDB[(MongoDB)]
-    NotificationService --> Redis[(Redis)]
-    
-    ServiceRegistry[Service Registry] --> OrderService
-    ServiceRegistry --> InventoryService
-    ServiceRegistry --> PaymentService
-    ServiceRegistry --> ShippingService
-    ServiceRegistry --> NotificationService
-```
-
-## Microservices
-
-1. **Order Service**:
-    - Manages order creation and lifecycle
-    - Initiates the order saga process
-    - Tracks order status throughout the saga
-
-2. **Inventory Service**:
-    - Manages product inventory
-    - Handles inventory reservation during order processing
-    - Provides inventory availability checks
-
-3. **Payment Service**:
-    - Processes customer payments
-    - Manages payment refunds for compensation transactions
-    - Tracks payment status
-
-4. **Shipping Service**:
-    - Creates shipments for orders
-    - Generates tracking information
-    - Manages delivery status
-
-5. **Notification Service**:
-    - Sends notifications to customers
-    - Supports multiple notification channels
-    - Tracks notification delivery status
-
-6. **Infrastructure Services**:
-    - **Service Registry**: Service discovery with Eureka
-    - **API Gateway**: Routing and cross-cutting concerns
-
-## Technologies
-
-- **Java 17**: Core programming language
-- **Spring Boot 3.2.12**: Application framework
-- **Spring Cloud**: Microservices toolkit
-- **Apache Kafka**: Event streaming platform for service communication
-- **Databases**:
-    - **PostgreSQL**: For Order, Payment, and Shipping services
-    - **MongoDB**: For Inventory and Notification services
-    - **Redis**: For caching and temporary data storage
-- **Docker & Docker Compose**: Containerization and orchestration
-- **Maven**: Build and dependency management
-
-## Saga Pattern Implementation
-
-This project implements the Saga pattern using a choreography-based approach:
-
-### Order Processing Flow:
-
-1. **Order Creation**:
-    - Customer places an order
-    - Order service creates an order with PENDING status
-    - Order service publishes OrderCreatedEvent
-
-2. **Inventory Reservation**:
-    - Inventory service consumes OrderCreatedEvent
-    - Checks product availability
-    - Reserves inventory if available
-    - Publishes InventoryReservedEvent or InventoryReservationFailedEvent
-
-3. **Payment Processing**:
-    - Payment service consumes InventoryReservedEvent
-    - Processes payment
-    - Publishes PaymentProcessedEvent or PaymentFailedEvent
-
-4. **Shipping Creation**:
-    - Shipping service consumes PaymentProcessedEvent
-    - Creates shipping record
-    - Publishes ShipmentProcessedEvent or ShipmentFailedEvent
-
-5. **Order Completion**:
-    - Order service updates order status to COMPLETED
-
-### Compensation Transactions:
-
-If any step fails, the system executes compensation transactions to maintain consistency:
-
-- **Payment Failure**: Inventory service releases reserved inventory
-- **Shipping Failure**: Payment service refunds payment, Inventory service releases inventory
-- **Notification Service**: Informs the customer about transaction status (success/failure)
-
-## Project Structure
-
-```
-ecommerce-microservices/
-├── pom.xml                          # Parent POM
-├── common-library/                  # Shared code between services
-├── service-registry/                # Eureka Service Discovery
-├── api-gateway/                     # Spring Cloud Gateway
-├── order-service/                   # Order management
-├── inventory-service/               # Inventory management
-├── payment-service/                 # Payment processing
-├── notification-service/            # Notification handling
-├── shipping-service/                # Shipping management
-└── docker-compose.yml               # Docker composition for all services
-```
-
-## Setup Instructions
-
-### Prerequisites
-
-- Java 17
-- Maven 3.8+
-- Docker and Docker Compose
-- Kafka and ZooKeeper
-- PostgreSQL, MongoDB, Redis
-
-### Running the Application
-
-1. **Clone the repository**:
-```bash
-git clone https://github.com/hacisimsek/ecommerce-microservices.git
-cd ecommerce-microservices
-```
-
-2. **Build the project**:
-```bash
-mvn clean package -DskipTests
-```
-
-3. **Start the infrastructure with Docker Compose**:
-```bash
-docker-compose up -d
-```
-
-4. **Check service health**:
-```bash
-# Access Eureka dashboard
-http://localhost:8761
-
-# Check API Gateway
-http://localhost:8080/actuator/health
-```
-
-## API Documentation
-
-### Order Service
-
-#### Create an Order
-```
-POST /api/orders
-Content-Type: application/json
-
-{
-  "customerId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "items": [
-    {
-      "productId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-      "productName": "Smartphone",
-      "quantity": 1,
-      "price": 799.99
-    }
-  ]
-}
-```
-
-#### Get Order by ID
-```
-GET /api/orders/{orderId}
-```
-
-#### Get All Customer Orders
-```
-GET /api/orders/customer/{customerId}
-```
-
-### Inventory Service
-
-#### Create Inventory Item
-```
-POST /api/inventory
-Content-Type: application/json
-
-{
-  "name": "Smartphone",
-  "description": "Latest smartphone model",
-  "quantity": 100
-}
-```
-
-#### Check Product Availability
-```
-GET /api/inventory/check?productId={productId}&quantity={quantity}
-```
-
-### Payment Service
-
-#### Get Payment by Order ID
-```
-GET /api/payments/order/{orderId}
-```
-
-### Shipping Service
-
-#### Get Shipment by Order ID
-```
-GET /api/shipping/order/{orderId}
-```
-
-### Notification Service
-
-#### Get Customer Notifications
-```
-GET /api/notifications/customer/{customerId}
-```
-
-## Testing
-
-### Unit Tests
-```bash
-mvn test
-```
-
-### Integration Tests
-```bash
-mvn verify -P integration-test
-```
-
-### End-to-End Testing
-Use Postman or curl to test the full order processing flow:
-
-1. Create an inventory item
-2. Create an order
-3. Check order status
-4. Verify payment creation
-5. Verify shipment creation
-6. Verify notifications
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Create a new Pull Request
+> A complete DevOps portfolio project demonstrating production-grade microservices deployment on AWS EKS with full CI/CD automation, GitOps, and observability stack.
 
 ---
 
-*© 2025 hacisimsek. All rights reserved.*
+## 📋 Table of Contents
+
+- [Architecture Overview](#architecture-overview)
+- [Tech Stack](#tech-stack)
+- [Services](#services)
+- [Infrastructure](#infrastructure)
+- [CI/CD Pipeline](#cicd-pipeline)
+- [GitOps with ArgoCD](#gitops-with-argocd)
+- [Monitoring & Observability](#monitoring--observability)
+- [Security](#security)
+- [Quick Start](#quick-start)
+- [Project Structure](#project-structure)
+
+---
+
+## 🏗️ Architecture Overview
+
+```
+Internet → ALB → API Gateway → Microservices (Private Subnet)
+                                    ↓ Kafka Events
+                              Order → Inventory → Payment → Notification → Shipping
+```
+
+### Infrastructure Layout
+
+```
+AWS VPC (10.0.0.0/16)
+├── Public Subnets (ap-south-1a, 1b)
+│   ├── Application Load Balancer (internet-facing)
+│   └── NAT Gateway
+└── Private Subnets (ap-south-1a, 1b)
+    └── EKS Cluster (3x t3.medium nodes)
+        ├── namespace: ecommerce      → 8 microservices + databases
+        ├── namespace: argocd         → GitOps controller
+        ├── namespace: monitoring     → Prometheus + Grafana + AlertManager
+        ├── namespace: amazon-cloudwatch → Container Insights + Fluent Bit
+        └── namespace: kube-system    → ALB Controller + EBS CSI + Pod Identity
+```
+
+---
+
+## 🛠️ Tech Stack
+
+### Infrastructure & Cloud
+| Tool | Purpose |
+|------|---------|
+| **AWS EKS** | Managed Kubernetes cluster |
+| **AWS VPC** | Network isolation (public/private subnets) |
+| **AWS ALB** | Internet-facing load balancer |
+| **AWS EBS** | Persistent storage via CSI driver |
+| **AWS CloudWatch** | Log aggregation + Container Insights |
+| **AWS IAM** | Pod Identity (hop_limit=1, most secure) |
+| **Terraform** | Modular IaC (S3 backend + DynamoDB lock) |
+| **Ansible** | Configuration management (Vault AES256) |
+
+### CI/CD & GitOps
+| Tool | Purpose |
+|------|---------|
+| **GitHub Actions** | CI per service + Terraform + Ansible workflows |
+| **ArgoCD** | GitOps CD (auto-sync + self-heal + prune) |
+| **DockerHub** | Container registry (SHORT_SHA versioning) |
+
+### Application
+| Tool | Purpose |
+|------|---------|
+| **Spring Boot 3.2** | Microservices framework |
+| **Java 17** | Runtime |
+| **Eureka** | Service discovery |
+| **Apache Kafka** | Event streaming (Saga pattern) |
+| **PostgreSQL** | Orders, Payments, Shipping data |
+| **MongoDB** | Inventory, Notifications |
+| **Redis** | Caching |
+
+### Monitoring & Observability
+| Tool | Purpose |
+|------|---------|
+| **Prometheus** | Metrics collection (15d retention) |
+| **Grafana** | Dashboards (6 auto-imported) |
+| **AlertManager** | Email alerts (15 custom rules) |
+| **CloudWatch** | Log analytics + Container Insights |
+| **Fluent Bit** | Pod log collection → CloudWatch |
+
+---
+
+## 🔧 Services
+
+| Service | Port | Database | Description |
+|---------|------|----------|-------------|
+| **API Gateway** | 8080 | - | Routes all external traffic |
+| **Service Registry** | 8761 | - | Eureka service discovery |
+| **Order Service** | 8081 | PostgreSQL | Creates and manages orders |
+| **Inventory Service** | 8082 | MongoDB | Stock management |
+| **Payment Service** | 8083 | PostgreSQL | Payment processing |
+| **Notification Service** | 8084 | MongoDB | Event notifications |
+| **Shipping Service** | 8085 | PostgreSQL | Shipment tracking |
+| **Kafka + Zookeeper** | 9092 | - | Event streaming |
+
+---
+
+## ☁️ Infrastructure
+
+### Terraform Modules
+
+```
+infrastructure/terraform/
+├── modules/
+│   ├── vpc/        # VPC, subnets, IGW, NAT, route tables
+│   ├── eks/        # EKS cluster, node groups, addons, Pod Identity
+│   └── security/   # IAM roles, security groups
+└── environments/
+    ├── dev/        # Dev tfvars
+    ├── staging/    # Staging tfvars
+    └── prod/       # Prod tfvars
+```
+
+### Remote State
+
+```
+S3 Bucket: ecommerce-devopsify-terraform-state
+Key:       ecommerce/dev/terraform.tfstate
+Lock:      DynamoDB — ecommerce-terraform-lock
+```
+
+### Security Features
+
+- **EKS Pod Identity** — Per-pod IAM credentials (hop_limit=1, most secure)
+- **Private subnets** — All workloads isolated from internet
+- **IMDSv2** — Required token-based IMDS access
+- **No IRSA** — Replaced with Pod Identity (simpler + more secure)
+
+---
+
+## 🔄 CI/CD Pipeline
+
+### GitHub Actions Workflows
+
+```
+.github/workflows/
+├── terraform.yml          # Plan + Apply (push to main = dev env)
+├── ansible.yml            # Full cluster configuration
+├── inventory-service.yml  # Build → Push → Update manifest
+├── order-service.yml
+├── payment-service.yml
+├── notification-service.yml
+├── shipping-service.yml
+├── api-gateway.yml
+└── service-registry.yml
+```
+
+### CI Flow (Per Service)
+
+```
+Push to main
+    ↓
+Build JAR (Maven)
+    ↓
+Build Docker image
+    ↓
+Push to DockerHub (sha-XXXXXXX tag)
+    ↓
+Update infrastructure/k8s/<service>/Deployment.yml
+    ↓
+Commit + Push manifest change
+    ↓
+ArgoCD detects change → deploys automatically
+```
+
+### Image Versioning
+
+```
+Tags per push:
+→ sha-380023e    (SHORT_SHA — 7 chars, traceable to commit)
+→ latest         (always points to newest)
+→ main           (branch tag)
+```
+
+---
+
+## 🔀 GitOps with ArgoCD
+
+### Application Configuration
+
+```yaml
+App:      ecommerce-app
+Repo:     github.com/silentknight2001/microservices-ecommerce-8service
+Path:     infrastructure/k8s/
+Sync:     Automated (prune + self-heal)
+```
+
+### Sync Waves (Deployment Order)
+
+```
+Wave 0 → Infrastructure (Kafka, MongoDB, PostgreSQL, Redis, Zookeeper)
+Wave 1 → Service Registry (Eureka)
+Wave 2 → API Gateway
+Wave 3 → Business Services (Inventory, Order, Payment, Notification, Shipping)
+Wave 5 → Ingress (ALB) — last, after all pods healthy
+```
+
+### Access ArgoCD
+
+```bash
+kubectl port-forward svc/argocd-server -n argocd 8443:443
+# https://localhost:8443
+# Username: admin
+# Password: kubectl -n argocd get secret argocd-initial-admin-secret \
+#             -o jsonpath="{.data.password}" | base64 -d
+```
+
+---
+
+## 📊 Monitoring & Observability
+
+### Prometheus + Grafana
+
+```bash
+# Grafana
+kubectl port-forward svc/grafana -n monitoring 3000:3000
+# http://localhost:3000 (admin / <GRAFANA_PASSWORD>)
+
+# Prometheus
+kubectl port-forward svc/prometheus-prometheus -n monitoring 9090:9090
+# http://localhost:9090
+```
+
+### Auto-Imported Grafana Dashboards
+
+| Dashboard | ID |
+|-----------|-----|
+| Kubernetes Cluster Overview | 15760 |
+| Kubernetes All-in-One | 13770 |
+| Node Exporter Full | 1860 |
+| Kubernetes Pod Details | 6417 |
+| Kubernetes Deployments | 7249 |
+| Spring Boot JVM | 12900 |
+
+### Alert Rules (15 Total)
+
+| Category | Alerts |
+|----------|--------|
+| **Pod** | CrashLoopBackOff, OOMKilled, HighRestarts, Pending |
+| **Node** | NotReady, HighCPU (>80%), HighMemory (>80%), DiskPressure (<20%) |
+| **Storage** | PVCCritical (>90%), PVCPending |
+| **JVM** | HeapCritical (>90%), GCTimeTooHigh |
+| **Kafka** | KafkaPodDown, ZookeeperPodDown |
+| **Deployment** | NotAvailable (0 replicas) |
+
+### CloudWatch
+
+```
+Log Groups:
+→ /eks/ecommerce/application/  (pod logs via Fluent Bit)
+→ EKS control plane logs (API, audit, authenticator)
+
+Retention: 30 days
+```
+
+---
+
+## 🔒 Security
+
+| Layer | Implementation |
+|-------|---------------|
+| **Network** | Private subnets, Security groups, NACLs |
+| **IAM** | Pod Identity (per-pod credentials, hop_limit=1) |
+| **Secrets** | Ansible Vault (AES256), K8s Secrets |
+| **CI/CD** | GitHub Secrets, GIT_OPS_TOKEN, Vault password |
+| **Images** | DockerHub with SHORT_SHA versioning |
+| **IMDS** | IMDSv2 required (http_tokens=required) |
+
+---
+
+## 🚀 Quick Start
+
+### Prerequisites
+
+```bash
+# Required tools
+terraform >= 1.12
+ansible >= 10.0
+kubectl >= 1.30
+helm >= 3.15
+argocd CLI
+aws CLI >= 2.15
+```
+
+### 1. Infrastructure Setup
+
+```bash
+cd infrastructure/terraform
+
+# Initialize with correct state key
+terraform init \
+  -backend-config="key=ecommerce/dev/terraform.tfstate" \
+  -backend-config="bucket=ecommerce-devopsify-terraform-state" \
+  -backend-config="region=ap-south-1" \
+  -reconfigure
+
+# Apply
+terraform apply \
+  -var-file="environments/dev/terraform.tfvars" \
+  -auto-approve
+```
+
+### 2. Configure Everything (One Command!)
+
+```bash
+cd ansible
+
+ansible-playbook playbooks/setup-eks.yml \
+  --ask-vault-pass
+```
+
+This single command:
+- ✅ Updates kubeconfig
+- ✅ Sets IMDS hop limit
+- ✅ Fixes EBS CSI driver
+- ✅ Creates StorageClass
+- ✅ Creates K8s secrets
+- ✅ Installs ALB Controller
+- ✅ Installs ArgoCD + creates app
+- ✅ Installs Prometheus + Grafana
+- ✅ Installs CloudWatch Container Insights
+
+### 3. Cleanup Before Destroy
+
+```bash
+# Run cleanup first (deletes ALB, ArgoCD app, security groups)
+ansible-playbook playbooks/cleanup-eks.yml
+
+# Then destroy infrastructure
+terraform destroy \
+  -var-file="environments/dev/terraform.tfvars" \
+  -auto-approve
+```
+
+---
+
+## 📁 Project Structure
+
+```
+microservices-ecommerce-8service/
+├── .github/workflows/          # GitHub Actions CI/CD
+│   ├── terraform.yml
+│   ├── ansible.yml
+│   └── *-service.yml (x7)
+├── api-gateway/                # Spring Boot services
+├── inventory-service/
+├── order-service/
+├── payment-service/
+├── notification-service/
+├── shipping-service/
+├── service-registry/
+├── common-library/             # Shared DTOs, events
+├── infrastructure/
+│   ├── terraform/              # Modular IaC
+│   │   ├── modules/
+│   │   │   ├── vpc/
+│   │   │   ├── eks/
+│   │   │   └── security/
+│   │   └── environments/
+│   │       ├── dev/
+│   │       ├── staging/
+│   │       └── prod/
+│   └── k8s/                   # ArgoCD managed manifests
+│       ├── api-gateway/
+│       ├── inventory-service/
+│       ├── order-service/
+│       ├── payment-service/
+│       ├── notification-service/
+│       ├── shipping-service/
+│       ├── service-registry/
+│       ├── kafka/
+│       ├── mongodb/
+│       ├── postgresql/
+│       ├── redis/
+│       ├── zookeeper/
+│       ├── storageclass.yml
+│       ├── namespace.yml
+│       └── ingress.yml
+└── ansible/                   # Configuration management
+    ├── playbooks/
+    │   ├── setup-eks.yml
+    │   └── cleanup-eks.yml
+    ├── roles/
+    │   ├── eks-setup/
+    │   ├── k8s-secrets/
+    │   ├── alb/
+    │   ├── argocd/
+    │   ├── monitoring/
+    │   └── cleanup/
+    └── group_vars/
+        └── all.yml
+```
+
+---
+
+## 👨‍💻 Author
+
+**Nayan Biswas**
+- Self-taught DevOps & Cloud Engineer
+- GitHub: [@silentknight2001](https://github.com/silentknight2001)
+- DockerHub: [nayan2001](https://hub.docker.com/u/nayan2001)
+
+> *Started learning Linux/DevOps on a mobile phone using Termux in 2014 while working day jobs- Paddy farming,hotel waiter etc... Built this production-grade platform to demonstrate end-to-end DevOps capabilities.*
+
+---
+
+## 📄 License
+
+MIT License — feel free to use this project as a reference for your own DevOps learning journey!
