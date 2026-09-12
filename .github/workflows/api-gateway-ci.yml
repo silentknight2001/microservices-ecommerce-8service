@@ -84,17 +84,18 @@ jobs:
 
       - name: Update image tag in k8s manifest
         run: |
-          sed -i 's|image: ${{ secrets.DOCKERHUB_USERNAME }}/api-gateway:.*|image: ${{ secrets.DOCKERHUB_USERNAME }}/api-gateway:sha-${{ github.sha }}|' \
-            infrastructure/k8s/api-gateway/Deployment.yml
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7 )
+          sed -i "s|image: ${{ secrets.DOCKERHUB_USERNAME }}/inventory-service:.*|image: ${{ secrets.DOCKERHUB_USERNAME }}/inventory-service:sha-${SHORT_SHA}|" \
+          infrastructure/k8s/inventory-service/Deployment.yml
 
       - name: Commit & push updated manifest
         run: |
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7 )
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add infrastructure/k8s/api-gateway/Deployment.yml
-          git commit -m "ci(api-gateway): update image to sha-${{ github.sha }}"
-          git push
-
+          git add infrastructure/k8s/inventory-service/Deployment.yml
+          git commit -m "ci(inventory-service): update image to sha-${SHORT_SHA}"
+          git push 
   # Deploy to EKS  dont need this we using Argocd
   # ----------------------
   # deploy:
