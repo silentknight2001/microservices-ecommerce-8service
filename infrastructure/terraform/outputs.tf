@@ -5,7 +5,7 @@ output "vpc_id" {
 
 output "private_subnet_ids" {
   description = "Private subnet IDs"
-  value       = module.vpc.private_subnet_ids    #triger pipeline 
+  value       = module.vpc.private_subnet_ids   
 }
 
 output "public_subnet_ids" {

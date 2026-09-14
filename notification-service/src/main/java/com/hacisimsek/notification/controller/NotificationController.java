@@ -4,7 +4,7 @@ import com.hacisimsek.notification.model.Notification;
 import com.hacisimsek.notification.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.*;   //test ci
 
 import java.util.List;
 import java.util.UUID;
