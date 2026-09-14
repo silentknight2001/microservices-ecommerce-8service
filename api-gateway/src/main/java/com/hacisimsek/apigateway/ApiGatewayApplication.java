@@ -5,7 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.client.discovery.EnableDiscoveryClient;
 
 
-// dummy commet for pipeline triger 
+
 @SpringBootApplication
 @EnableDiscoveryClient
 public class ApiGatewayApplication {

@@ -13,7 +13,7 @@ import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.kafka.support.serializer.JsonSerializer;
 
 import java.util.HashMap;
-import java.util.Map;
+import java.util.Map;     //dummy comment for triger ci
 
 @Configuration
 public class KafkaConfig {
