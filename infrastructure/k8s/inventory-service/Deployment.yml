@@ -78,7 +78,7 @@ spec:
           allowPrivilegeEscalation: false
       containers:
       - name: inventory-service
-        image: nayan2001/inventory-service:sha-6d0ad95
+        image: nayan2001/inventory-service:sha-50f18cc
         imagePullPolicy: Always
         ports:
         - name: http
