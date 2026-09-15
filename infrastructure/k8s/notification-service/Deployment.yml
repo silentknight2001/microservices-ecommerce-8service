@@ -93,7 +93,7 @@ spec:
           allowPrivilegeEscalation: false
       containers:
       - name: notification-service
-        image: nayan2001/notification-service:latest
+        image: nayan2001/notification-service:sha-5a4750c
         imagePullPolicy: Always
         ports:
         - name: http
