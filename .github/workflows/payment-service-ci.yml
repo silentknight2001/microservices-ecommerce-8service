@@ -85,9 +85,9 @@ jobs:
 
       - name: Update image tag in k8s manifest
         run: |
-          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7 )
-          sed -i "s|image: ${{ secrets.DOCKERHUB_USERNAME }}/payment-service:.*|image: ${{ secrets.DOCKERHUB_USERNAME }}/payment-service:sha-${SHORT_SHA}|" \
-          infrastructure/k8s/payment-service/Deployment.yml
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          sed -i "s|image: nayan2001/payment-service:.*|image: nayan2001/payment-service:sha-${SHORT_SHA}|" \
+           infrastructure/k8s/payment-service/Deployment.yml
 
       - name: Commit & push updated manifest
         run: |
@@ -96,6 +96,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add infrastructure/k8s/payment-service/Deployment.yml
           git commit -m "ci(payment-service): update image to sha-${SHORT_SHA}"
+          git pull --rebase origin main
           git push 
 
   # deploy:
