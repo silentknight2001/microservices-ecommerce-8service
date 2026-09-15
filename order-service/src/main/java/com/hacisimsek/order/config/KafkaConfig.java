@@ -12,7 +12,7 @@ import org.springframework.kafka.core.*;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 import org.springframework.kafka.support.serializer.JsonSerializer;    
 
-import java.util.HashMap;
+import java.util.HashMap;  //test ci
 import java.util.Map;
 
 @Configuration
