@@ -33,7 +33,7 @@ spec:
         fsGroup: 1001
       containers:
       - name: service-registry
-        image: nayan2001/service-registry:sha-6d0ad95
+        image: nayan2001/service-registry:sha-50f18cc
         imagePullPolicy: Always
         ports:
         - name: http
