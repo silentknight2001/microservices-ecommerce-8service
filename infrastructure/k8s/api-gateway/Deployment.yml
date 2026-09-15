@@ -48,7 +48,7 @@ spec:
           allowPrivilegeEscalation: false
       containers:
       - name: api-gateway
-        image: nayan2001/api-gateway:latest
+        image: nayan2001/api-gateway:sha-6d0ad95
         imagePullPolicy: Always
         ports:
         - name: http
