@@ -86,7 +86,7 @@ jobs:
       - name: Update image tag in k8s manifest
         run: |
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          sed -i "s|image: nayan2001/notification-service/:.*|image: nayan2001/notification-service:sha-${SHORT_SHA}|" \
+          sed -i "s|image: nayan2001/notification-service:.*|image: nayan2001/notification-service:sha-${SHORT_SHA}|" \
            infrastructure/k8s/notification-service/Deployment.yml
 
       - name: Commit & push updated manifest
