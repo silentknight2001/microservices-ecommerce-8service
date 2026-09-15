@@ -78,7 +78,7 @@ spec:
           allowPrivilegeEscalation: false
       containers:
       - name: payment-service
-        image: nayan2001/payment-service:latest
+        image: nayan2001/payment-service:sha-6d0ad95
         imagePullPolicy: Always
         ports:
         - name: http
