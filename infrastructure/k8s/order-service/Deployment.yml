@@ -78,7 +78,7 @@ spec:
           allowPrivilegeEscalation: false
       containers:
       - name: order-service
-        image: nayan2001/order-service:sha-86ce301
+        image: nayan2001/order-service:sha-6d0ad95
         imagePullPolicy: Always
         ports:
         - name: http
