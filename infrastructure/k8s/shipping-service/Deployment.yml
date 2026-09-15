@@ -78,7 +78,7 @@ spec:
           allowPrivilegeEscalation: false
       containers:
       - name: shipping-service
-        image: nayan2001/shipping-service:latest
+        image: nayan2001/shipping-service:sha-6d0ad95
         imagePullPolicy: Always
         ports:
         - name: http
